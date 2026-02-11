@@ -1,0 +1,93 @@
+{
+  "colorScheme": "light",
+  "fonts": [
+    {
+      "family": "Times New Roman",
+      "role": "body"
+    },
+    {
+      "family": "Google Sans",
+      "role": "heading"
+    },
+    {
+      "family": "Roboto",
+      "role": "body"
+    }
+  ],
+  "colors": {
+    "primary": "#1967D2",
+    "accent": "#1967D2",
+    "background": "#E8F0FE",
+    "textPrimary": "#1967D2",
+    "link": "#1967D2"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "Times New Roman",
+      "heading": "Google Sans"
+    },
+    "fontStacks": {
+      "heading": [
+        "Times New Roman"
+      ],
+      "body": [
+        "Times New Roman"
+      ],
+      "paragraph": [
+        "Times New Roman"
+      ]
+    },
+    "fontSizes": {
+      "h1": "16px",
+      "h2": "16px",
+      "body": "16px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 10,
+    "borderRadius": "2px"
+  },
+  "components": {},
+  "images": {
+    "favicon": null,
+    "ogImage": null
+  },
+  "__framework_hints": [],
+  "__llm_logo_reasoning": {
+    "selectedIndex": -1,
+    "reasoning": "No valid brand logo - only a tiny UI icon was detected, which does not represent the brand.",
+    "confidence": 0.3,
+    "rejected": true,
+    "source": "llm"
+  },
+  "personality": {
+    "tone": "professional",
+    "energy": "low",
+    "targetAudience": "legal professionals"
+  },
+  "designSystem": {
+    "framework": "unknown",
+    "componentLibrary": ""
+  },
+  "confidence": {
+    "buttons": 0.2,
+    "colors": 0.9,
+    "overall": 0.55
+  },
+  "__llm_metadata": {
+    "logoSelection": {
+      "llmCalled": true,
+      "llmSucceeded": true,
+      "finalSource": "llm",
+      "rawLogoSelection": {
+        "selectedLogoIndex": -1,
+        "selectedLogoReasoning": "No valid brand logo - only a tiny UI icon was detected, which does not represent the brand.",
+        "confidence": 0.3
+      }
+    },
+    "buttonClassification": {
+      "llmCalled": false,
+      "llmSucceeded": true
+    }
+  }
+}
