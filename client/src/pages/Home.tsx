@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, CheckCircle2, FileText, Scale, Info, AlertCircle } from "lucide-react";
+import { Upload, CheckCircle2, FileText, Scale, Info, Paperclip, X } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
 
@@ -32,6 +32,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 
+const MAX_FILE_MB = 5;
+const ACCEPTED_FILE_TYPES = ["application/pdf", "image/png", "image/jpeg"];
+
 const formSchema = z.object({
   // Solicitante
   cpf: z.string().min(11, "CPF inválido").max(14, "CPF inválido"),
@@ -39,7 +42,20 @@ const formSchema = z.object({
   whatsapp: z.string().min(10, "Número de WhatsApp inválido"),
   email: z.string().email("E-mail inválido"),
   oab: z.string().optional(),
-  
+
+  // Upload (frontend-only)
+  procuracao: z
+    .custom<File | null>()
+    .refine(
+      (file) => !file || ACCEPTED_FILE_TYPES.includes(file.type),
+      "Formato inválido. Envie PDF, PNG ou JPG.",
+    )
+    .refine(
+      (file) => !file || file.size <= MAX_FILE_MB * 1024 * 1024,
+      `Arquivo muito grande. Máximo ${MAX_FILE_MB}MB.`,
+    )
+    .optional(),
+
   // Processo
   tipoNumeracao: z.enum(["npu", "tombo"], {
     required_error: "Selecione o tipo de numeração",
@@ -54,6 +70,7 @@ const formSchema = z.object({
 
 export default function Home() {
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -64,6 +81,7 @@ export default function Home() {
       whatsapp: "",
       email: "",
       oab: "",
+      procuracao: null,
       numeroProcesso: "",
       partes: "",
       observacao: "",
@@ -233,17 +251,92 @@ export default function Home() {
                       )}
                     />
 
-                    {/* Mock File Upload */}
-                    <div className="col-span-1 md:col-span-2 space-y-3">
-                      <Label>Procuração de Habilitação</Label>
-                      <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer group">
-                        <div className="bg-slate-100 p-3 rounded-full mb-3 group-hover:bg-slate-200 transition-colors">
-                          <Upload className="h-6 w-6 text-slate-500" />
-                        </div>
-                        <p className="text-sm font-medium text-slate-700">Clique para fazer upload do arquivo</p>
-                        <p className="text-xs text-slate-500 mt-1">PDF, PNG ou JPG (Máx. 5MB)</p>
-                      </div>
-                    </div>
+                    <FormField
+                      control={form.control}
+                      name="procuracao"
+                      render={({ field }) => {
+                        const file = (field.value ?? null) as File | null;
+
+                        return (
+                          <FormItem className="col-span-1 md:col-span-2 space-y-3">
+                            <FormLabel>Procuração de Habilitação</FormLabel>
+                            <FormControl>
+                              <div>
+                                <input
+                                  ref={fileInputRef}
+                                  type="file"
+                                  accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const next = e.target.files?.[0] ?? null;
+                                    field.onChange(next);
+                                  }}
+                                  data-testid="input-procuracao"
+                                />
+
+                                <button
+                                  type="button"
+                                  onClick={() => fileInputRef.current?.click()}
+                                  className="w-full rounded-lg border-2 border-dashed border-slate-200 p-6 text-left transition-colors hover:bg-slate-50"
+                                  data-testid="button-upload-procuracao"
+                                >
+                                  <div className="flex items-start gap-4">
+                                    <div className="bg-slate-100 p-3 rounded-full mt-0.5">
+                                      <Upload className="h-5 w-5 text-slate-600" />
+                                    </div>
+                                    <div className="flex-1">
+                                      <p className="text-sm font-medium text-slate-800">
+                                        {file ? "Arquivo selecionado" : "Clique para anexar a procuração"}
+                                      </p>
+                                      <p className="text-xs text-slate-500 mt-1">
+                                        PDF, PNG ou JPG (Máx. {MAX_FILE_MB}MB)
+                                      </p>
+
+                                      <AnimatePresence initial={false}>
+                                        {file ? (
+                                          <motion.div
+                                            initial={{ opacity: 0, y: 6 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: 6 }}
+                                            className="mt-3 flex items-center justify-between gap-3 rounded-md border bg-white px-3 py-2"
+                                            data-testid="row-file-procuracao"
+                                          >
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <Paperclip className="h-4 w-4 text-slate-500" />
+                                              <span className="text-sm text-slate-700 truncate" data-testid="text-file-name">
+                                                {file.name}
+                                              </span>
+                                              <span className="text-xs text-slate-500 shrink-0" data-testid="text-file-size">
+                                                {Math.ceil(file.size / 1024)} KB
+                                              </span>
+                                            </div>
+
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              size="icon"
+                                              onClick={() => {
+                                                field.onChange(null);
+                                                if (fileInputRef.current) fileInputRef.current.value = "";
+                                              }}
+                                              aria-label="Remover arquivo"
+                                              data-testid="button-remove-procuracao"
+                                            >
+                                              <X className="h-4 w-4" />
+                                            </Button>
+                                          </motion.div>
+                                        ) : null}
+                                      </AnimatePresence>
+                                    </div>
+                                  </div>
+                                </button>
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
+                    />
                   </div>
                 </div>
 
