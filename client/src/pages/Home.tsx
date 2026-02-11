@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -274,62 +275,64 @@ export default function Home() {
                                   data-testid="input-procuracao"
                                 />
 
-                                <button
-                                  type="button"
-                                  onClick={() => fileInputRef.current?.click()}
-                                  className="w-full rounded-lg border-2 border-dashed border-slate-200 p-6 text-left transition-colors hover:bg-slate-50"
-                                  data-testid="button-upload-procuracao"
-                                >
-                                  <div className="flex items-start gap-4">
-                                    <div className="bg-slate-100 p-3 rounded-full mt-0.5">
-                                      <Upload className="h-5 w-5 text-slate-600" />
+                                <div>
+                                  <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="w-full rounded-lg border-2 border-dashed border-slate-200 p-6 text-left transition-colors hover:bg-slate-50"
+                                    data-testid="button-upload-procuracao"
+                                  >
+                                    <div className="flex items-start gap-4">
+                                      <div className="bg-slate-100 p-3 rounded-full mt-0.5">
+                                        <Upload className="h-5 w-5 text-slate-600" />
+                                      </div>
+                                      <div className="flex-1">
+                                        <p className="text-sm font-medium text-slate-800">
+                                          {file ? "Arquivo selecionado" : "Clique para anexar a procuração"}
+                                        </p>
+                                        <p className="text-xs text-slate-500 mt-1">
+                                          PDF, PNG ou JPG (Máx. {MAX_FILE_MB}MB)
+                                        </p>
+                                      </div>
                                     </div>
-                                    <div className="flex-1">
-                                      <p className="text-sm font-medium text-slate-800">
-                                        {file ? "Arquivo selecionado" : "Clique para anexar a procuração"}
-                                      </p>
-                                      <p className="text-xs text-slate-500 mt-1">
-                                        PDF, PNG ou JPG (Máx. {MAX_FILE_MB}MB)
-                                      </p>
+                                  </button>
 
-                                      <AnimatePresence initial={false}>
-                                        {file ? (
-                                          <motion.div
-                                            initial={{ opacity: 0, y: 6 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            exit={{ opacity: 0, y: 6 }}
-                                            className="mt-3 flex items-center justify-between gap-3 rounded-md border bg-white px-3 py-2"
-                                            data-testid="row-file-procuracao"
-                                          >
-                                            <div className="flex items-center gap-2 min-w-0">
-                                              <Paperclip className="h-4 w-4 text-slate-500" />
-                                              <span className="text-sm text-slate-700 truncate" data-testid="text-file-name">
-                                                {file.name}
-                                              </span>
-                                              <span className="text-xs text-slate-500 shrink-0" data-testid="text-file-size">
-                                                {Math.ceil(file.size / 1024)} KB
-                                              </span>
-                                            </div>
+                                  <AnimatePresence initial={false}>
+                                    {file ? (
+                                      <motion.div
+                                        initial={{ opacity: 0, y: 6 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 6 }}
+                                        className="mt-3 flex items-center justify-between gap-3 rounded-md border bg-white px-3 py-2"
+                                        data-testid="row-file-procuracao"
+                                      >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <Paperclip className="h-4 w-4 text-slate-500" />
+                                          <span className="text-sm text-slate-700 truncate" data-testid="text-file-name">
+                                            {file.name}
+                                          </span>
+                                          <span className="text-xs text-slate-500 shrink-0" data-testid="text-file-size">
+                                            {Math.ceil(file.size / 1024)} KB
+                                          </span>
+                                        </div>
 
-                                            <Button
-                                              type="button"
-                                              variant="ghost"
-                                              size="icon"
-                                              onClick={() => {
-                                                field.onChange(null);
-                                                if (fileInputRef.current) fileInputRef.current.value = "";
-                                              }}
-                                              aria-label="Remover arquivo"
-                                              data-testid="button-remove-procuracao"
-                                            >
-                                              <X className="h-4 w-4" />
-                                            </Button>
-                                          </motion.div>
-                                        ) : null}
-                                      </AnimatePresence>
-                                    </div>
-                                  </div>
-                                </button>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => {
+                                            field.onChange(null);
+                                            if (fileInputRef.current) fileInputRef.current.value = "";
+                                          }}
+                                          aria-label="Remover arquivo"
+                                          data-testid="button-remove-procuracao"
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </Button>
+                                      </motion.div>
+                                    ) : null}
+                                  </AnimatePresence>
+                                </div>
                               </div>
                             </FormControl>
                             <FormMessage />
@@ -492,6 +495,13 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <p>© {new Date().getFullYear()} Tribunal de Justiça de Pernambuco - Arquivo Geral</p>
           <p className="text-xs mt-1 text-slate-600">Desenvolvido para fins de demonstração</p>
+          <div className="mt-3">
+            <Link href="/admin">
+              <a className="text-slate-300 hover:text-white underline-offset-4 hover:underline" data-testid="link-admin">
+                Acessar Administração
+              </a>
+            </Link>
+          </div>
         </div>
       </footer>
     </div>
