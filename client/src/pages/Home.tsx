@@ -5,6 +5,8 @@ import * as z from "zod";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, CheckCircle2, FileText, Scale, Info, AlertCircle } from "lucide-react";
 
+import { Label } from "@/components/ui/label";
+
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import {
@@ -233,7 +235,7 @@ export default function Home() {
 
                     {/* Mock File Upload */}
                     <div className="col-span-1 md:col-span-2 space-y-3">
-                      <FormLabel>Procuração de Habilitação</FormLabel>
+                      <Label>Procuração de Habilitação</Label>
                       <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors cursor-pointer group">
                         <div className="bg-slate-100 p-3 rounded-full mb-3 group-hover:bg-slate-200 transition-colors">
                           <Upload className="h-6 w-6 text-slate-500" />

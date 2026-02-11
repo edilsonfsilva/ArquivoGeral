@@ -5,8 +5,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center mx-auto px-4">
-        <Link href="/">
-          <a className="flex items-center gap-3 hover:opacity-90 transition-opacity">
+        <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
             <img 
               src={logo} 
               alt="Brasão TJPE" 
@@ -20,7 +19,6 @@ export function Header() {
                 TRIBUNAL DE JUSTIÇA DE PERNAMBUCO
               </span>
             </div>
-          </a>
         </Link>
       </div>
     </header>
