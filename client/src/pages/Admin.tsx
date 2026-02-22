@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link } from "wouter";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "wouter";
 import {
   CheckCircle2,
   Clock,
@@ -9,6 +9,7 @@ import {
   Eye,
   FileText,
   Filter,
+  LogOut,
   MessageSquarePlus,
   Paperclip,
   Search,
@@ -197,13 +198,34 @@ const initialMockUsers: SystemUser[] = [
 ];
 
 export default function Admin() {
+  const [, setLocation] = useLocation();
   const [requests, setRequests] = useState<RequestItem[]>(initialMockRequests);
   const [users, setUsers] = useState<SystemUser[]>(initialMockUsers);
   const [currentUser, setCurrentUser] = useState<SystemUser>(initialMockUsers[0]);
 
+  useEffect(() => {
+    // Only check auth if we're in the browser environment
+    if (typeof window !== "undefined") {
+      const isAuth = localStorage.getItem("adminAuth") === "true";
+      if (!isAuth) {
+        setLocation("/admin");
+      } else {
+        const role = localStorage.getItem("adminRole") as UserRole;
+        if (role === "admin" || role === "atendente") {
+          const userWithRole = users.find(u => u.role === role);
+          if (userWithRole) {
+             setCurrentUser(userWithRole);
+          }
+        }
+      }
+    }
+  }, [setLocation, users]);
+
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "todos">("todos");
   const [selected, setSelected] = useState<RequestItem | null>(null);
+  const [editingMode, setEditingMode] = useState(false);
+  const [editForm, setEditForm] = useState<RequestItem | null>(null);
 
   const [newObs, setNewObs] = useState("");
   const { toast } = useToast();
@@ -228,6 +250,14 @@ export default function Admin() {
         );
       });
   }, [query, statusFilter, requests]);
+
+  const handleSaveEdit = () => {
+    if (!editForm || !selected) return;
+    setRequests((prev) => prev.map((r) => r.id === editForm.id ? editForm : r));
+    setSelected(editForm);
+    setEditingMode(false);
+    toast({ title: "Solicitação atualizada" });
+  };
 
   const handleStatusChange = (status: RequestStatus) => {
     if (!selected) return;
@@ -300,7 +330,18 @@ export default function Admin() {
                     Voltar ao formulário
                   </Link>
                   <span className="text-slate-400">•</span>
-                  <span className="text-amber-600 font-medium">Modo Protótipo</span>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="text-slate-500 hover:text-slate-700 h-auto p-0"
+                    onClick={() => {
+                      localStorage.removeItem("adminAuth");
+                      localStorage.removeItem("adminRole");
+                      setLocation("/admin");
+                    }}
+                  >
+                    <LogOut className="h-4 w-4 mr-1.5" /> Sair
+                  </Button>
                 </div>
               </div>
 
@@ -578,16 +619,26 @@ export default function Admin() {
                             Registrado em {selected.createdAt}
                           </SheetDescription>
                         </div>
-                        {currentUser.role === "admin" && (
+                        {currentUser.role === "admin" && !editingMode && (
                           <div className="flex gap-2">
                             <Button variant="outline" size="sm" onClick={() => {
-                              prompt("Edição rápida de nome do solicitante:", selected.solicitante.nome);
-                              toast({ title: "Edição simulada concluída." });
+                              setEditForm(JSON.parse(JSON.stringify(selected)));
+                              setEditingMode(true);
                             }}>
                               <Edit className="h-4 w-4 mr-2" /> Editar
                             </Button>
                             <Button variant="destructive" size="sm" onClick={handleDeleteRequest}>
                               <Trash2 className="h-4 w-4 mr-2" /> Excluir
+                            </Button>
+                          </div>
+                        )}
+                        {editingMode && (
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setEditingMode(false)}>
+                              Cancelar
+                            </Button>
+                            <Button variant="default" size="sm" onClick={handleSaveEdit}>
+                              Salvar alterações
                             </Button>
                           </div>
                         )}
@@ -605,54 +656,105 @@ export default function Admin() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                               <div className="text-xs text-slate-500">Número do processo</div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-base font-semibold text-slate-900">{selected.processo.numero}</span>
-                                <Button
-                                  variant="ghost" size="icon" className="h-6 w-6"
-                                  onClick={() => copyToClipboard(selected.processo.numero, "Número")}
-                                  title="Copiar número"
-                                >
-                                  <Copy className="h-3.5 w-3.5 text-slate-400" />
-                                </Button>
-                              </div>
+                              {editingMode && editForm ? (
+                                <Input 
+                                  value={editForm.processo.numero} 
+                                  onChange={(e) => setEditForm({...editForm, processo: {...editForm.processo, numero: e.target.value}})}
+                                  className="h-8 text-sm font-semibold"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base font-semibold text-slate-900">{selected.processo.numero}</span>
+                                  <Button
+                                    variant="ghost" size="icon" className="h-6 w-6"
+                                    onClick={() => copyToClipboard(selected.processo.numero, "Número")}
+                                    title="Copiar número"
+                                  >
+                                    <Copy className="h-3.5 w-3.5 text-slate-400" />
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                             <div className="space-y-1.5">
                               <div className="text-xs text-slate-500">Tipo de numeração</div>
-                              <div className="text-sm font-medium text-slate-900 uppercase">
-                                {selected.processo.tipoNumeracao}
-                              </div>
+                              {editingMode && editForm ? (
+                                <Select 
+                                  value={editForm.processo.tipoNumeracao}
+                                  onValueChange={(v: "npu" | "tombo") => setEditForm({...editForm, processo: {...editForm.processo, tipoNumeracao: v}})}
+                                >
+                                  <SelectTrigger className="h-8 text-sm uppercase"><SelectValue/></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="npu">NPU</SelectItem>
+                                    <SelectItem value="tombo">Tombo</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <div className="text-sm font-medium text-slate-900 uppercase">
+                                  {selected.processo.tipoNumeracao}
+                                </div>
+                              )}
                             </div>
                           </div>
                           
                           <div className="space-y-1.5">
                             <div className="text-xs text-slate-500">Partes</div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-slate-900">{selected.processo.partes}</span>
-                              <Button
-                                variant="ghost" size="icon" className="h-6 w-6"
-                                onClick={() => copyToClipboard(selected.processo.partes, "Partes")}
-                                title="Copiar partes"
-                              >
-                                <Copy className="h-3.5 w-3.5 text-slate-400" />
-                              </Button>
-                            </div>
+                            {editingMode && editForm ? (
+                                <Input 
+                                  value={editForm.processo.partes} 
+                                  onChange={(e) => setEditForm({...editForm, processo: {...editForm.processo, partes: e.target.value}})}
+                                  className="h-8 text-sm"
+                                />
+                              ) : (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-slate-900">{selected.processo.partes}</span>
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6"
+                                  onClick={() => copyToClipboard(selected.processo.partes, "Partes")}
+                                  title="Copiar partes"
+                                >
+                                  <Copy className="h-3.5 w-3.5 text-slate-400" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                           
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                               <div className="text-xs text-slate-500">Segredo de Justiça</div>
-                              <div className="text-sm text-slate-900">
-                                {selected.processo.segredoJustica === "sim" ? (
-                                  <span className="text-amber-600 font-medium flex items-center gap-1">
-                                    <Shield className="h-4 w-4" /> Sim
-                                  </span>
-                                ) : "Não"}
-                              </div>
+                              {editingMode && editForm ? (
+                                <Select 
+                                  value={editForm.processo.segredoJustica}
+                                  onValueChange={(v: "sim" | "nao") => setEditForm({...editForm, processo: {...editForm.processo, segredoJustica: v}})}
+                                >
+                                  <SelectTrigger className="h-8 text-sm"><SelectValue/></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="sim">Sim</SelectItem>
+                                    <SelectItem value="nao">Não</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <div className="text-sm text-slate-900">
+                                  {selected.processo.segredoJustica === "sim" ? (
+                                    <span className="text-amber-600 font-medium flex items-center gap-1">
+                                      <Shield className="h-4 w-4" /> Sim
+                                    </span>
+                                  ) : "Não"}
+                                </div>
+                              )}
                             </div>
-                            {selected.processo.observacao && (
+                            {(selected.processo.observacao || editingMode) && (
                               <div className="space-y-1.5">
                                 <div className="text-xs text-slate-500">Observação do Solicitante</div>
-                                <div className="text-sm text-slate-700 italic">"{selected.processo.observacao}"</div>
+                                {editingMode && editForm ? (
+                                  <Input 
+                                    value={editForm.processo.observacao || ""} 
+                                    onChange={(e) => setEditForm({...editForm, processo: {...editForm.processo, observacao: e.target.value}})}
+                                    className="h-8 text-sm"
+                                    placeholder="Nenhuma observação"
+                                  />
+                                ) : (
+                                  <div className="text-sm text-slate-700 italic">"{selected.processo.observacao}"</div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -667,32 +769,73 @@ export default function Admin() {
                         <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-6">
                           <div className="space-y-1">
                             <div className="text-xs text-slate-500">Nome Completo</div>
-                            <div className="text-sm text-slate-900">{selected.solicitante.nome}</div>
+                            {editingMode && editForm ? (
+                              <Input 
+                                value={editForm.solicitante.nome} 
+                                onChange={(e) => setEditForm({...editForm, solicitante: {...editForm.solicitante, nome: e.target.value}})}
+                                className="h-8 text-sm"
+                              />
+                            ) : (
+                              <div className="text-sm text-slate-900">{selected.solicitante.nome}</div>
+                            )}
                           </div>
                           <div className="space-y-1">
                             <div className="text-xs text-slate-500">CPF</div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-slate-900">{selected.solicitante.cpf}</span>
-                              <Button
-                                variant="ghost" size="icon" className="h-6 w-6"
-                                onClick={() => copyToClipboard(selected.solicitante.cpf, "CPF")}
-                              >
-                                <Copy className="h-3.5 w-3.5 text-slate-400" />
-                              </Button>
-                            </div>
+                            {editingMode && editForm ? (
+                              <Input 
+                                value={editForm.solicitante.cpf} 
+                                onChange={(e) => setEditForm({...editForm, solicitante: {...editForm.solicitante, cpf: e.target.value}})}
+                                className="h-8 text-sm"
+                              />
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-slate-900">{selected.solicitante.cpf}</span>
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6"
+                                  onClick={() => copyToClipboard(selected.solicitante.cpf, "CPF")}
+                                >
+                                  <Copy className="h-3.5 w-3.5 text-slate-400" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                           <div className="space-y-1">
                             <div className="text-xs text-slate-500">WhatsApp</div>
-                            <div className="text-sm text-slate-900">{selected.solicitante.whatsapp}</div>
+                            {editingMode && editForm ? (
+                              <Input 
+                                value={editForm.solicitante.whatsapp} 
+                                onChange={(e) => setEditForm({...editForm, solicitante: {...editForm.solicitante, whatsapp: e.target.value}})}
+                                className="h-8 text-sm"
+                              />
+                            ) : (
+                              <div className="text-sm text-slate-900">{selected.solicitante.whatsapp}</div>
+                            )}
                           </div>
                           <div className="space-y-1">
                             <div className="text-xs text-slate-500">E-mail</div>
-                            <div className="text-sm text-slate-900">{selected.solicitante.email}</div>
+                            {editingMode && editForm ? (
+                              <Input 
+                                value={editForm.solicitante.email} 
+                                onChange={(e) => setEditForm({...editForm, solicitante: {...editForm.solicitante, email: e.target.value}})}
+                                className="h-8 text-sm"
+                              />
+                            ) : (
+                              <div className="text-sm text-slate-900">{selected.solicitante.email}</div>
+                            )}
                           </div>
-                          {selected.solicitante.oab && (
+                          {(selected.solicitante.oab || editingMode) && (
                             <div className="space-y-1">
                               <div className="text-xs text-slate-500">OAB (Advogado)</div>
-                              <div className="text-sm font-medium text-slate-900">{selected.solicitante.oab}</div>
+                              {editingMode && editForm ? (
+                                <Input 
+                                  value={editForm.solicitante.oab || ""} 
+                                  onChange={(e) => setEditForm({...editForm, solicitante: {...editForm.solicitante, oab: e.target.value}})}
+                                  className="h-8 text-sm"
+                                  placeholder="Opcional"
+                                />
+                              ) : (
+                                <div className="text-sm font-medium text-slate-900">{selected.solicitante.oab}</div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -719,7 +862,15 @@ export default function Admin() {
                                   </div>
                                 </div>
                               </div>
-                              <Button type="button" variant="outline" className="gap-2 shrink-0">
+                              <Button 
+                                type="button" 
+                                variant="outline" 
+                                className="gap-2 shrink-0"
+                                onClick={() => {
+                                  toast({ title: "Download iniciado", description: "O arquivo está sendo baixado." });
+                                  // Mock download behavior
+                                }}
+                              >
                                 <Download className="h-4 w-4" />
                                 Baixar
                               </Button>
