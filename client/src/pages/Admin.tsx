@@ -18,7 +18,20 @@ import {
   UserCog,
   Users,
   XCircle,
+  BarChart3,
 } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+} from "recharts";
+
 
 import { Header } from "@/components/layout/Header";
 import { Badge } from "@/components/ui/badge";
@@ -332,7 +345,37 @@ export default function Admin() {
     }
   };
 
+  const handleExport = () => {
+    const headers = ["ID", "Data", "Status", "Solicitante", "CPF", "E-mail", "WhatsApp", "Num. Processo", "Partes", "Segredo"];
+    const csvContent = [
+      headers.join(";"),
+      ...filtered.map(r => [
+        r.id,
+        r.createdAt,
+        r.status,
+        `"${r.solicitante.nome}"`,
+        r.solicitante.cpf,
+        r.solicitante.email,
+        r.solicitante.whatsapp,
+        `"${r.processo.numero}"`,
+        `"${r.processo.partes}"`,
+        r.processo.segredoJustica
+      ].join(";"))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `solicitacoes_tjpe_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast({ title: "Exportação concluída", description: "O arquivo CSV foi baixado." });
+  };
+
   const copyToClipboard = (text: string, label: string) => {
+
     navigator.clipboard.writeText(text);
     toast({ title: "Copiado", description: `${label} copiado para a área de transferência.` });
   };
@@ -378,16 +421,22 @@ export default function Admin() {
             </div>
 
             <Tabs defaultValue="solicitacoes" className="w-full">
-              <TabsList className="mb-4 bg-white border shadow-sm w-full justify-start h-auto p-1">
+              <TabsList className="mb-4 bg-white border shadow-sm w-full justify-start h-auto p-1 flex-wrap">
                 <TabsTrigger value="solicitacoes" className="py-2.5 px-4 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
                   <FileText className="h-4 w-4" />
                   Solicitações
                 </TabsTrigger>
                 {currentUser.role === "admin" && (
-                  <TabsTrigger value="usuarios" className="py-2.5 px-4 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
-                    <Users className="h-4 w-4" />
-                    Usuários (Admin)
-                  </TabsTrigger>
+                  <>
+                    <TabsTrigger value="dashboard" className="py-2.5 px-4 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
+                      <BarChart3 className="h-4 w-4" />
+                      Dashboard
+                    </TabsTrigger>
+                    <TabsTrigger value="usuarios" className="py-2.5 px-4 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
+                      <Users className="h-4 w-4" />
+                      Usuários (Admin)
+                    </TabsTrigger>
+                  </>
                 )}
               </TabsList>
 
@@ -469,7 +518,7 @@ export default function Admin() {
                         >
                           Limpar
                         </Button>
-                        <Button type="button" variant="secondary" className="gap-2">
+                        <Button type="button" variant="secondary" className="gap-2" onClick={handleExport}>
                           <Download className="h-4 w-4" />
                           Exportar
                         </Button>
@@ -542,7 +591,122 @@ export default function Admin() {
               </TabsContent>
 
               {currentUser.role === "admin" && (
-                <TabsContent value="usuarios" className="space-y-6 mt-0">
+                <>
+                  <TabsContent value="dashboard" className="space-y-6 mt-0">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <Card className="col-span-1 md:col-span-2 lg:col-span-3 border-t-4 border-t-primary shadow-sm">
+                        <CardHeader>
+                          <CardTitle className="text-lg font-serif">Atendimentos por Mês</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="h-[300px] w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={[
+                                { name: "Jan", atendimentos: 120 },
+                                { name: "Fev", atendimentos: 180 },
+                                { name: "Mar", atendimentos: 250 },
+                                { name: "Abr", atendimentos: 150 },
+                                { name: "Mai", atendimentos: Math.max(50, stats.novo + stats.aprovado + stats.em_analise + stats.indeferido) },
+                              ]}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <RechartsTooltip />
+                                <Bar dataKey="atendimentos" fill="#15803d" radius={[4, 4, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="shadow-sm border-t-4 border-t-blue-600">
+                        <CardHeader>
+                          <CardTitle className="text-lg font-serif">Horários de Pico</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="h-[200px] w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={[
+                                { hora: "08h", chamados: 12 },
+                                { hora: "10h", chamados: 45 },
+                                { hora: "14h", chamados: 55 },
+                                { hora: "16h", chamados: 30 },
+                                { hora: "18h", chamados: 10 },
+                              ]}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="hora" />
+                                <YAxis />
+                                <RechartsTooltip />
+                                <Line type="monotone" dataKey="chamados" stroke="#2563eb" strokeWidth={2} />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="shadow-sm border-t-4 border-t-amber-500">
+                        <CardHeader>
+                          <CardTitle className="text-lg font-serif">Maiores Solicitantes</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-4">
+                            {[
+                              { nome: "João da Silva", qtd: 15 },
+                              { nome: "Maria Santos", qtd: 12 },
+                              { nome: "Carlos Eduardo", qtd: 8 },
+                              { nome: "Ana Paula", qtd: 5 },
+                            ].map((s, i) => (
+                              <div key={i} className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-slate-700">{s.nome}</span>
+                                <Badge variant="secondary">{s.qtd} pedidos</Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="shadow-sm border-t-4 border-t-purple-600">
+                        <CardHeader>
+                          <CardTitle className="text-lg font-serif">Atendentes Mais Ativos</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-4">
+                            {[
+                              { nome: "Ana Souza", mov: 84 },
+                              { nome: "Marcos Lima", mov: 62 },
+                              { nome: "Admin", mov: 21 },
+                            ].map((a, i) => (
+                              <div key={i} className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-slate-700">{a.nome}</span>
+                                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                                  {a.mov} interações
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <div className="col-span-1 md:col-span-2 lg:col-span-3 grid grid-cols-2 gap-4">
+                        <Card className="bg-slate-900 text-white">
+                          <CardContent className="p-6">
+                            <div className="text-sm text-slate-400 mb-1">Atendimentos Hoje</div>
+                            <div className="text-3xl font-bold">24</div>
+                            <div className="text-xs text-emerald-400 mt-2">↑ 12% em relação a ontem</div>
+                          </CardContent>
+                        </Card>
+                        <Card className="bg-primary text-white">
+                          <CardContent className="p-6">
+                            <div className="text-sm text-green-100 mb-1">Atendimentos na Semana</div>
+                            <div className="text-3xl font-bold">142</div>
+                            <div className="text-xs text-green-200 mt-2">↑ 5% em relação à semana passada</div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="usuarios" className="space-y-6 mt-0">
                   <Card className="shadow-sm border-t-4 border-t-slate-800">
                     <CardHeader className="flex flex-row items-center justify-between">
                       <div>
@@ -619,6 +783,7 @@ export default function Admin() {
                     </CardContent>
                   </Card>
                 </TabsContent>
+              </>
               )}
             </Tabs>
 
