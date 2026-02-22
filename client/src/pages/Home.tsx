@@ -496,10 +496,8 @@ export default function Home() {
           <p>© {new Date().getFullYear()} Tribunal de Justiça de Pernambuco - Arquivo Geral</p>
           <p className="text-xs mt-1 text-slate-600">Desenvolvido para fins de demonstração</p>
           <div className="mt-3">
-            <Link href="/admin">
-              <a className="text-slate-300 hover:text-white underline-offset-4 hover:underline" data-testid="link-admin">
-                Acessar Administração
-              </a>
+            <Link href="/admin" className="text-slate-300 hover:text-white underline-offset-4 hover:underline" data-testid="link-admin">
+              Acessar Administração
             </Link>
           </div>
         </div>

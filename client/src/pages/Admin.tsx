@@ -3,13 +3,19 @@ import { Link } from "wouter";
 import {
   CheckCircle2,
   Clock,
+  Copy,
   Download,
+  Edit,
   Eye,
   FileText,
   Filter,
+  MessageSquarePlus,
   Paperclip,
   Search,
   Shield,
+  Trash2,
+  UserCog,
+  Users,
   XCircle,
 } from "lucide-react";
 
@@ -33,8 +39,19 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import { Textarea } from "@/components/ui/textarea";
 
 type RequestStatus = "novo" | "em_analise" | "aprovado" | "indeferido";
+type UserRole = "admin" | "atendente";
+
+type Observation = {
+  id: string;
+  text: string;
+  author: string;
+  date: string;
+};
 
 type RequestItem = {
   id: string;
@@ -59,6 +76,14 @@ type RequestItem = {
     sizeKB: number;
     type: string;
   };
+  observacoes: Observation[];
+};
+
+type SystemUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
 };
 
 const statusLabel: Record<RequestStatus, string> = {
@@ -88,15 +113,15 @@ function statusIcon(status: RequestStatus) {
   }
 }
 
-const mockRequests: RequestItem[] = [
+const initialMockRequests: RequestItem[] = [
   {
     id: "AG-000184",
     createdAt: "2026-02-11 10:42",
     status: "novo",
     solicitante: {
       nome: "Maria Eduarda Santos",
-      cpf: "***.***.***-**",
-      whatsapp: "(81) 9****-****",
+      cpf: "111.222.333-44",
+      whatsapp: "(81) 98888-7777",
       email: "maria.santos@exemplo.com",
       oab: "12345-PE",
     },
@@ -112,6 +137,7 @@ const mockRequests: RequestItem[] = [
       sizeKB: 842,
       type: "application/pdf",
     },
+    observacoes: [],
   },
   {
     id: "AG-000183",
@@ -119,8 +145,8 @@ const mockRequests: RequestItem[] = [
     status: "em_analise",
     solicitante: {
       nome: "Carlos Henrique Lima",
-      cpf: "***.***.***-**",
-      whatsapp: "(81) 9****-****",
+      cpf: "555.666.777-88",
+      whatsapp: "(81) 99999-0000",
       email: "carlos.lima@exemplo.com",
     },
     processo: {
@@ -129,6 +155,14 @@ const mockRequests: RequestItem[] = [
       partes: "Estado de Pernambuco x Fulano de Tal",
       segredoJustica: "sim",
     },
+    observacoes: [
+      {
+        id: "obs-1",
+        text: "Processo físico localizado no arquivo central. Aguardando digitalização parcial.",
+        author: "Ana Souza (Atendente)",
+        date: "2026-02-11 14:30",
+      },
+    ],
   },
   {
     id: "AG-000182",
@@ -136,8 +170,8 @@ const mockRequests: RequestItem[] = [
     status: "aprovado",
     solicitante: {
       nome: "Ana Paula Ribeiro",
-      cpf: "***.***.***-**",
-      whatsapp: "(81) 9****-****",
+      cpf: "999.888.777-66",
+      whatsapp: "(81) 97777-6666",
       email: "ana.ribeiro@exemplo.com",
     },
     processo: {
@@ -152,41 +186,37 @@ const mockRequests: RequestItem[] = [
       sizeKB: 311,
       type: "image/jpeg",
     },
-  },
-  {
-    id: "AG-000181",
-    createdAt: "2026-02-10 11:26",
-    status: "indeferido",
-    solicitante: {
-      nome: "Rafael Oliveira",
-      cpf: "***.***.***-**",
-      whatsapp: "(81) 9****-****",
-      email: "rafael.oliveira@exemplo.com",
-    },
-    processo: {
-      tipoNumeracao: "tombo",
-      numero: "ANT-2003-00044",
-      partes: "Fulano x Banco Y",
-      segredoJustica: "nao",
-      observacao: "Dados insuficientes para localizar o processo.",
-    },
+    observacoes: [],
   },
 ];
 
+const initialMockUsers: SystemUser[] = [
+  { id: "usr-1", name: "João Silva", email: "joao.silva@tjpe.jus.br", role: "admin" },
+  { id: "usr-2", name: "Ana Souza", email: "ana.souza@tjpe.jus.br", role: "atendente" },
+  { id: "usr-3", name: "Marcos Lima", email: "marcos.lima@tjpe.jus.br", role: "atendente" },
+];
+
 export default function Admin() {
+  const [requests, setRequests] = useState<RequestItem[]>(initialMockRequests);
+  const [users, setUsers] = useState<SystemUser[]>(initialMockUsers);
+  const [currentUser, setCurrentUser] = useState<SystemUser>(initialMockUsers[0]);
+
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "todos">("todos");
   const [selected, setSelected] = useState<RequestItem | null>(null);
 
+  const [newObs, setNewObs] = useState("");
+  const { toast } = useToast();
+
   const stats = useMemo(() => {
     const base = { novo: 0, em_analise: 0, aprovado: 0, indeferido: 0 } as Record<RequestStatus, number>;
-    for (const r of mockRequests) base[r.status]++;
+    for (const r of requests) base[r.status]++;
     return base;
-  }, []);
+  }, [requests]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return mockRequests
+    return requests
       .filter((r) => (statusFilter === "todos" ? true : r.status === statusFilter))
       .filter((r) => {
         if (!q) return true;
@@ -197,7 +227,54 @@ export default function Admin() {
           r.processo.partes.toLowerCase().includes(q)
         );
       });
-  }, [query, statusFilter]);
+  }, [query, statusFilter, requests]);
+
+  const handleStatusChange = (status: RequestStatus) => {
+    if (!selected) return;
+    setRequests((prev) =>
+      prev.map((r) => (r.id === selected.id ? { ...r, status } : r))
+    );
+    setSelected((prev) => (prev ? { ...prev, status } : null));
+    toast({
+      title: "Status atualizado",
+      description: `A solicitação ${selected.id} foi alterada para ${statusLabel[status]}.`,
+    });
+  };
+
+  const handleAddObservation = () => {
+    if (!selected || !newObs.trim()) return;
+    const obs: Observation = {
+      id: `obs-${Date.now()}`,
+      text: newObs.trim(),
+      author: `${currentUser.name} (${currentUser.role === 'admin' ? 'Admin' : 'Atendente'})`,
+      date: new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
+    };
+
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.id === selected.id ? { ...r, observacoes: [...r.observacoes, obs] } : r
+      )
+    );
+    setSelected((prev) =>
+      prev ? { ...prev, observacoes: [...prev.observacoes, obs] } : null
+    );
+    setNewObs("");
+    toast({ title: "Observação adicionada com sucesso" });
+  };
+
+  const handleDeleteRequest = () => {
+    if (!selected) return;
+    if (confirm(`Tem certeza que deseja excluir a solicitação ${selected.id}?`)) {
+      setRequests((prev) => prev.filter((r) => r.id !== selected.id));
+      setSelected(null);
+      toast({ title: "Solicitação excluída", variant: "destructive" });
+    }
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copiado", description: `${label} copiado para a área de transferência.` });
+  };
 
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col">
@@ -206,347 +283,536 @@ export default function Admin() {
       <main className="flex-1">
         <div className="container mx-auto px-4 py-8 md:py-10">
           <div className="max-w-6xl mx-auto space-y-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between bg-white p-4 rounded-xl border shadow-sm">
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
                   <div className="rounded-lg bg-primary/10 p-2">
                     <Shield className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <h1 className="text-3xl md:text-4xl font-serif text-slate-900" data-testid="text-admin-title">Administração</h1>
-                    <p className="text-slate-600" data-testid="text-admin-subtitle">
-                      Verifique e analise as solicitações recebidas.
-                    </p>
+                    <h1 className="text-3xl md:text-4xl font-serif text-slate-900">Administração</h1>
+                    <p className="text-slate-600">Gestão de solicitações e usuários do arquivo.</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3 text-sm">
-                  <Link href="/">
-                    <a className="text-primary hover:underline" data-testid="link-back-home">Voltar ao formulário</a>
+                  <Link href="/" className="text-primary hover:underline">
+                    Voltar ao formulário
                   </Link>
                   <span className="text-slate-400">•</span>
-                  <span className="text-slate-500" data-testid="text-admin-disclaimer">Dados exibidos: demonstração (mock)</span>
+                  <span className="text-amber-600 font-medium">Modo Protótipo</span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:flex md:items-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="justify-center"
-                  onClick={() => {
-                    setQuery("");
-                    setStatusFilter("todos");
-                  }}
-                  data-testid="button-clear-filters"
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-slate-700">Simular acesso como:</label>
+                <Select
+                  value={currentUser.id}
+                  onValueChange={(val) => setCurrentUser(users.find((u) => u.id === val) || users[0])}
                 >
-                  <Filter className="h-4 w-4" />
-                  Limpar
-                </Button>
-                <Button type="button" className="justify-center" data-testid="button-export">
-                  <Download className="h-4 w-4" />
-                  Exportar
-                </Button>
+                  <SelectTrigger className="w-[240px] bg-slate-50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name} ({u.role === "admin" ? "Administrador" : "Atendente"})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-slate-600 font-sans" data-testid="text-stat-novo-label">Novos</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="text-2xl font-semibold text-slate-900" data-testid="text-stat-novo">{stats.novo}</div>
-                </CardContent>
-              </Card>
-              <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-slate-600 font-sans" data-testid="text-stat-analise-label">Em análise</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="text-2xl font-semibold text-slate-900" data-testid="text-stat-analise">{stats.em_analise}</div>
-                </CardContent>
-              </Card>
-              <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-slate-600 font-sans" data-testid="text-stat-aprovado-label">Aprovadas</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="text-2xl font-semibold text-slate-900" data-testid="text-stat-aprovado">{stats.aprovado}</div>
-                </CardContent>
-              </Card>
-              <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-slate-600 font-sans" data-testid="text-stat-indeferido-label">Indeferidas</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="text-2xl font-semibold text-slate-900" data-testid="text-stat-indeferido">{stats.indeferido}</div>
-                </CardContent>
-              </Card>
-            </div>
+            <Tabs defaultValue="solicitacoes" className="w-full">
+              <TabsList className="mb-4 bg-white border shadow-sm w-full justify-start h-auto p-1">
+                <TabsTrigger value="solicitacoes" className="py-2.5 px-4 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
+                  <FileText className="h-4 w-4" />
+                  Solicitações
+                </TabsTrigger>
+                {currentUser.role === "admin" && (
+                  <TabsTrigger value="usuarios" className="py-2.5 px-4 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
+                    <Users className="h-4 w-4" />
+                    Usuários (Admin)
+                  </TabsTrigger>
+                )}
+              </TabsList>
 
-            <Card className="shadow-lg overflow-hidden border-t-4 border-t-primary">
-              <CardHeader className="space-y-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-slate-600" />
-                    <CardTitle className="text-lg font-serif text-slate-900" data-testid="text-admin-list-title">Solicitações</CardTitle>
-                  </div>
-
-                  <div className="flex flex-col md:flex-row gap-3 md:items-center">
-                    <div className="relative">
-                      <Search className="h-4 w-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <Input
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Buscar por protocolo, nome, número do processo…"
-                        className="pl-9 w-full md:w-[360px]"
-                        data-testid="input-search"
-                      />
-                    </div>
-
-                    <Select
-                      value={statusFilter}
-                      onValueChange={(v) => setStatusFilter(v as RequestStatus | "todos")}
-                    >
-                      <SelectTrigger className="w-full md:w-[190px]" data-testid="select-status">
-                        <SelectValue placeholder="Status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todos">Todos</SelectItem>
-                        <SelectItem value="novo">Novo</SelectItem>
-                        <SelectItem value="em_analise">Em análise</SelectItem>
-                        <SelectItem value="aprovado">Aprovado</SelectItem>
-                        <SelectItem value="indeferido">Indeferido</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <TabsContent value="solicitacoes" className="space-y-6 mt-0">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <Card className="shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm text-slate-600 font-sans">Novos</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="text-2xl font-semibold text-slate-900">{stats.novo}</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm text-slate-600 font-sans">Em análise</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="text-2xl font-semibold text-slate-900">{stats.em_analise}</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm text-slate-600 font-sans">Aprovadas</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="text-2xl font-semibold text-slate-900">{stats.aprovado}</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm text-slate-600 font-sans">Indeferidas</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="text-2xl font-semibold text-slate-900">{stats.indeferido}</div>
+                    </CardContent>
+                  </Card>
                 </div>
 
-                <div className="text-sm text-slate-500" data-testid="text-admin-results">
-                  {filtered.length} resultado(s)
-                </div>
-              </CardHeader>
-
-              <CardContent className="pt-0">
-                <div className="divide-y">
-                  {filtered.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      className="w-full text-left py-4 px-1 md:px-2 hover:bg-slate-50 transition-colors rounded-md"
-                      onClick={() => setSelected(r)}
-                      data-testid={`row-request-${r.id}`}
-                    >
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-slate-900" data-testid={`text-request-id-${r.id}`}>{r.id}</span>
-                            <Badge variant={statusBadgeVariant[r.status]} className="gap-1" data-testid={`badge-status-${r.id}`}>
-                              {statusIcon(r.status)}
-                              {statusLabel[r.status]}
-                            </Badge>
-                            {r.processo.segredoJustica === "sim" ? (
-                              <Badge variant="outline" className="text-amber-700 border-amber-200 bg-amber-50" data-testid={`badge-sigilo-${r.id}`}>
-                                Sigilo
-                              </Badge>
-                            ) : null}
-                            {r.anexo ? (
-                              <Badge variant="outline" className="gap-1" data-testid={`badge-anexo-${r.id}`}>
-                                <Paperclip className="h-3.5 w-3.5" />
-                                Anexo
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <div className="text-sm text-slate-600 truncate" data-testid={`text-request-summary-${r.id}`}>
-                            {r.processo.numero} • {r.processo.partes}
-                          </div>
-                          <div className="text-xs text-slate-500" data-testid={`text-request-meta-${r.id}`}>
-                            {r.solicitante.nome} • {r.createdAt}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 justify-end">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="gap-2"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setSelected(r);
-                            }}
-                            data-testid={`button-view-${r.id}`}
-                          >
-                            <Eye className="h-4 w-4" />
-                            Ver
-                          </Button>
-                        </div>
+                <Card className="shadow-lg overflow-hidden border-t-4 border-t-primary">
+                  <CardHeader className="space-y-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="flex items-center gap-2">
+                        <Filter className="h-4 w-4 text-slate-500" />
+                        <CardTitle className="text-lg font-serif text-slate-900">Filtros</CardTitle>
                       </div>
-                    </button>
-                  ))}
 
-                  {filtered.length === 0 ? (
-                    <div className="py-10 text-center text-slate-600" data-testid="text-empty">
-                      Nenhuma solicitação encontrada com os filtros atuais.
+                      <div className="flex flex-col md:flex-row gap-3 md:items-center">
+                        <div className="relative">
+                          <Search className="h-4 w-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <Input
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="Buscar por protocolo, nome, processo…"
+                            className="pl-9 w-full md:w-[320px]"
+                          />
+                        </div>
+
+                        <Select
+                          value={statusFilter}
+                          onValueChange={(v) => setStatusFilter(v as RequestStatus | "todos")}
+                        >
+                          <SelectTrigger className="w-full md:w-[160px]">
+                            <SelectValue placeholder="Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="todos">Todos</SelectItem>
+                            <SelectItem value="novo">Novo</SelectItem>
+                            <SelectItem value="em_analise">Em análise</SelectItem>
+                            <SelectItem value="aprovado">Aprovado</SelectItem>
+                            <SelectItem value="indeferido">Indeferido</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => { setQuery(""); setStatusFilter("todos"); }}
+                        >
+                          Limpar
+                        </Button>
+                        <Button type="button" variant="secondary" className="gap-2">
+                          <Download className="h-4 w-4" />
+                          Exportar
+                        </Button>
+                      </div>
                     </div>
-                  ) : null}
-                </div>
-              </CardContent>
-            </Card>
+
+                    <div className="text-sm text-slate-500">
+                      {filtered.length} solicitação(ões) encontrada(s)
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="pt-0">
+                    <div className="divide-y border rounded-md">
+                      {filtered.map((r) => (
+                        <div
+                          key={r.id}
+                          className="w-full text-left p-4 hover:bg-slate-50 transition-colors bg-white first:rounded-t-md last:rounded-b-md cursor-pointer"
+                          onClick={() => setSelected(r)}
+                        >
+                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div className="space-y-1.5 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-semibold text-slate-900">{r.id}</span>
+                                <Badge variant={statusBadgeVariant[r.status]} className="gap-1">
+                                  {statusIcon(r.status)}
+                                  {statusLabel[r.status]}
+                                </Badge>
+                                {r.processo.segredoJustica === "sim" && (
+                                  <Badge variant="outline" className="text-amber-700 border-amber-200 bg-amber-50">
+                                    Sigilo
+                                  </Badge>
+                                )}
+                                {r.anexo && (
+                                  <Badge variant="outline" className="gap-1 bg-slate-100">
+                                    <Paperclip className="h-3 w-3" /> Anexo
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-sm font-medium text-slate-800 truncate">
+                                {r.processo.numero} • {r.processo.partes}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                {r.solicitante.nome} • Registrado em: {r.createdAt}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 justify-end mt-2 md:mt-0">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                className="gap-2 pointer-events-none"
+                              >
+                                <Eye className="h-4 w-4" />
+                                Detalhes
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {filtered.length === 0 && (
+                        <div className="p-12 text-center text-slate-500">
+                          Nenhuma solicitação corresponde aos filtros.
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {currentUser.role === "admin" && (
+                <TabsContent value="usuarios" className="space-y-6 mt-0">
+                  <Card className="shadow-sm border-t-4 border-t-slate-800">
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg font-serif">Gerenciamento de Usuários</CardTitle>
+                        <p className="text-sm text-slate-500 mt-1">Adicione ou remova permissões de acesso ao painel.</p>
+                      </div>
+                      <Button onClick={() => {
+                        const name = prompt("Nome do usuário:");
+                        const email = prompt("E-mail do usuário:");
+                        if (name && email) {
+                          setUsers([...users, { id: `usr-${Date.now()}`, name, email, role: "atendente" }]);
+                          toast({ title: "Usuário adicionado" });
+                        }
+                      }}>
+                        <UserCog className="h-4 w-4 mr-2" />
+                        Novo Usuário
+                      </Button>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="rounded-md border">
+                        {users.map((u) => (
+                          <div key={u.id} className="flex items-center justify-between p-4 border-b last:border-0 hover:bg-slate-50">
+                            <div>
+                              <div className="font-medium text-slate-900 flex items-center gap-2">
+                                {u.name}
+                                {u.role === 'admin' && <Badge variant="default" className="text-[10px] h-5">Admin</Badge>}
+                                {u.role === 'atendente' && <Badge variant="secondary" className="text-[10px] h-5">Atendente</Badge>}
+                              </div>
+                              <div className="text-sm text-slate-500">{u.email}</div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Select
+                                value={u.role}
+                                onValueChange={(val: UserRole) => {
+                                  setUsers(users.map(user => user.id === u.id ? { ...user, role: val } : user));
+                                  if (currentUser.id === u.id) setCurrentUser({ ...currentUser, role: val });
+                                  toast({ title: "Perfil atualizado" });
+                                }}
+                              >
+                                <SelectTrigger className="w-[130px] h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="admin">Administrador</SelectItem>
+                                  <SelectItem value="atendente">Atendente</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-9 w-9 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                onClick={() => {
+                                  if (users.length === 1) return alert("Não é possível remover o único usuário.");
+                                  if (confirm("Remover usuário?")) {
+                                    setUsers(users.filter(user => user.id !== u.id));
+                                    toast({ title: "Usuário removido" });
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              )}
+            </Tabs>
 
             <Sheet open={!!selected} onOpenChange={(open) => (!open ? setSelected(null) : null)}>
-              <SheetContent className="w-full sm:max-w-xl">
-                <SheetHeader>
-                  <SheetTitle className="font-serif" data-testid="text-sheet-title">Detalhes da solicitação</SheetTitle>
-                  <SheetDescription data-testid="text-sheet-subtitle">
-                    Visualize os dados e registre sua análise.
-                  </SheetDescription>
-                </SheetHeader>
-
-                {selected ? (
-                  <div className="mt-6 space-y-6">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg font-semibold text-slate-900" data-testid="text-sheet-id">{selected.id}</span>
-                          <Badge variant={statusBadgeVariant[selected.status]} className="gap-1" data-testid="badge-sheet-status">
-                            {statusIcon(selected.status)}
-                            {statusLabel[selected.status]}
-                          </Badge>
+              <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+                {selected && (
+                  <>
+                    <SheetHeader className="mb-6">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <SheetTitle className="font-serif text-2xl flex items-center gap-3">
+                            {selected.id}
+                            <Badge variant={statusBadgeVariant[selected.status]} className="text-sm">
+                              {statusLabel[selected.status]}
+                            </Badge>
+                          </SheetTitle>
+                          <SheetDescription className="mt-1 text-slate-500">
+                            Registrado em {selected.createdAt}
+                          </SheetDescription>
                         </div>
-                        <div className="text-sm text-slate-500" data-testid="text-sheet-created">{selected.createdAt}</div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border bg-white">
-                      <div className="px-4 py-3 border-b">
-                        <div className="text-sm font-semibold text-slate-900" data-testid="text-section-solicitante">Dados do solicitante</div>
-                      </div>
-                      <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <div className="text-xs text-slate-500">Nome</div>
-                          <div className="text-sm text-slate-900" data-testid="text-sheet-nome">{selected.solicitante.nome}</div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-xs text-slate-500">CPF</div>
-                          <div className="text-sm text-slate-900" data-testid="text-sheet-cpf">{selected.solicitante.cpf}</div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-xs text-slate-500">WhatsApp</div>
-                          <div className="text-sm text-slate-900" data-testid="text-sheet-whatsapp">{selected.solicitante.whatsapp}</div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-xs text-slate-500">E-mail</div>
-                          <div className="text-sm text-slate-900" data-testid="text-sheet-email">{selected.solicitante.email}</div>
-                        </div>
-                        {selected.solicitante.oab ? (
-                          <div className="space-y-1">
-                            <div className="text-xs text-slate-500">OAB</div>
-                            <div className="text-sm text-slate-900" data-testid="text-sheet-oab">{selected.solicitante.oab}</div>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border bg-white">
-                      <div className="px-4 py-3 border-b">
-                        <div className="text-sm font-semibold text-slate-900" data-testid="text-section-processo">Dados do processo</div>
-                      </div>
-                      <div className="p-4 space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <div className="text-xs text-slate-500">Tipo de numeração</div>
-                            <div className="text-sm text-slate-900" data-testid="text-sheet-tipo">
-                              {selected.processo.tipoNumeracao === "npu" ? "NPU" : "Tombo"}
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <div className="text-xs text-slate-500">Segredo de Justiça</div>
-                            <div className="text-sm text-slate-900" data-testid="text-sheet-sigilo">
-                              {selected.processo.segredoJustica === "sim" ? "Sim" : "Não"}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-xs text-slate-500">Número do processo</div>
-                          <div className="text-sm font-medium text-slate-900" data-testid="text-sheet-numero">{selected.processo.numero}</div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-xs text-slate-500">Partes</div>
-                          <div className="text-sm text-slate-900" data-testid="text-sheet-partes">{selected.processo.partes}</div>
-                        </div>
-                        {selected.processo.observacao ? (
-                          <div className="space-y-1">
-                            <div className="text-xs text-slate-500">Observação</div>
-                            <div className="text-sm text-slate-900" data-testid="text-sheet-obs">{selected.processo.observacao}</div>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border bg-white">
-                      <div className="px-4 py-3 border-b">
-                        <div className="text-sm font-semibold text-slate-900" data-testid="text-section-anexo">Anexo</div>
-                      </div>
-                      <div className="p-4">
-                        {selected.anexo ? (
-                          <div className="flex items-center justify-between gap-3 rounded-md border bg-slate-50 px-3 py-2">
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium text-slate-900 truncate" data-testid="text-sheet-file-name">
-                                {selected.anexo.name}
-                              </div>
-                              <div className="text-xs text-slate-500" data-testid="text-sheet-file-meta">
-                                {selected.anexo.type} • {selected.anexo.sizeKB} KB
-                              </div>
-                            </div>
-                            <Button type="button" variant="outline" className="gap-2" data-testid="button-download">
-                              <Download className="h-4 w-4" />
-                              Baixar
+                        {currentUser.role === "admin" && (
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => {
+                              prompt("Edição rápida de nome do solicitante:", selected.solicitante.nome);
+                              toast({ title: "Edição simulada concluída." });
+                            }}>
+                              <Edit className="h-4 w-4 mr-2" /> Editar
                             </Button>
-                          </div>
-                        ) : (
-                          <div className="text-sm text-slate-600" data-testid="text-sheet-no-attachment">
-                            Nenhum anexo enviado.
+                            <Button variant="destructive" size="sm" onClick={handleDeleteRequest}>
+                              <Trash2 className="h-4 w-4 mr-2" /> Excluir
+                            </Button>
                           </div>
                         )}
                       </div>
-                    </div>
+                    </SheetHeader>
 
-                    <div className="rounded-lg border bg-white">
-                      <div className="px-4 py-3 border-b">
-                        <div className="text-sm font-semibold text-slate-900" data-testid="text-section-analise">Análise</div>
+                    <div className="space-y-6">
+                      {/* Process Info First (Most important for search) */}
+                      <div className="rounded-lg border bg-white overflow-hidden shadow-sm">
+                        <div className="bg-primary/5 px-4 py-3 border-b flex items-center gap-2">
+                          <Search className="h-4 w-4 text-primary" />
+                          <div className="text-sm font-semibold text-primary">Dados para Busca de Processo</div>
+                        </div>
+                        <div className="p-4 space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <div className="text-xs text-slate-500">Número do processo</div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-base font-semibold text-slate-900">{selected.processo.numero}</span>
+                                <Button
+                                  variant="ghost" size="icon" className="h-6 w-6"
+                                  onClick={() => copyToClipboard(selected.processo.numero, "Número")}
+                                  title="Copiar número"
+                                >
+                                  <Copy className="h-3.5 w-3.5 text-slate-400" />
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="space-y-1.5">
+                              <div className="text-xs text-slate-500">Tipo de numeração</div>
+                              <div className="text-sm font-medium text-slate-900 uppercase">
+                                {selected.processo.tipoNumeracao}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-1.5">
+                            <div className="text-xs text-slate-500">Partes</div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-slate-900">{selected.processo.partes}</span>
+                              <Button
+                                variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={() => copyToClipboard(selected.processo.partes, "Partes")}
+                                title="Copiar partes"
+                              >
+                                <Copy className="h-3.5 w-3.5 text-slate-400" />
+                              </Button>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <div className="text-xs text-slate-500">Segredo de Justiça</div>
+                              <div className="text-sm text-slate-900">
+                                {selected.processo.segredoJustica === "sim" ? (
+                                  <span className="text-amber-600 font-medium flex items-center gap-1">
+                                    <Shield className="h-4 w-4" /> Sim
+                                  </span>
+                                ) : "Não"}
+                              </div>
+                            </div>
+                            {selected.processo.observacao && (
+                              <div className="space-y-1.5">
+                                <div className="text-xs text-slate-500">Observação do Solicitante</div>
+                                <div className="text-sm text-slate-700 italic">"{selected.processo.observacao}"</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="p-4 space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <Button type="button" variant="outline" data-testid="button-set-analise">
-                            Marcar em análise
+
+                      {/* Requester Info */}
+                      <div className="rounded-lg border bg-white shadow-sm">
+                        <div className="px-4 py-3 border-b bg-slate-50">
+                          <div className="text-sm font-semibold text-slate-900">Dados do Solicitante</div>
+                        </div>
+                        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-6">
+                          <div className="space-y-1">
+                            <div className="text-xs text-slate-500">Nome Completo</div>
+                            <div className="text-sm text-slate-900">{selected.solicitante.nome}</div>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs text-slate-500">CPF</div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-slate-900">{selected.solicitante.cpf}</span>
+                              <Button
+                                variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={() => copyToClipboard(selected.solicitante.cpf, "CPF")}
+                              >
+                                <Copy className="h-3.5 w-3.5 text-slate-400" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs text-slate-500">WhatsApp</div>
+                            <div className="text-sm text-slate-900">{selected.solicitante.whatsapp}</div>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs text-slate-500">E-mail</div>
+                            <div className="text-sm text-slate-900">{selected.solicitante.email}</div>
+                          </div>
+                          {selected.solicitante.oab && (
+                            <div className="space-y-1">
+                              <div className="text-xs text-slate-500">OAB (Advogado)</div>
+                              <div className="text-sm font-medium text-slate-900">{selected.solicitante.oab}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Attachment */}
+                      <div className="rounded-lg border bg-white shadow-sm">
+                        <div className="px-4 py-3 border-b bg-slate-50">
+                          <div className="text-sm font-semibold text-slate-900">Procuração / Documento</div>
+                        </div>
+                        <div className="p-4">
+                          {selected.anexo ? (
+                            <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="bg-primary/10 p-2 rounded-full">
+                                  <Paperclip className="h-4 w-4 text-primary" />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-slate-900 truncate">
+                                    {selected.anexo.name}
+                                  </div>
+                                  <div className="text-xs text-slate-500 mt-0.5">
+                                    {selected.anexo.type} • {selected.anexo.sizeKB} KB
+                                  </div>
+                                </div>
+                              </div>
+                              <Button type="button" variant="outline" className="gap-2 shrink-0">
+                                <Download className="h-4 w-4" />
+                                Baixar
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-slate-500 italic p-2 bg-slate-50 rounded-md text-center border border-dashed">
+                              Nenhum anexo foi enviado nesta solicitação.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Observations & Internal Notes */}
+                      <div className="rounded-lg border bg-white shadow-sm overflow-hidden">
+                        <div className="px-4 py-3 border-b bg-amber-50/50">
+                          <div className="text-sm font-semibold text-amber-900 flex items-center gap-2">
+                            <MessageSquarePlus className="h-4 w-4" /> Observações Internas
+                          </div>
+                        </div>
+                        <div className="p-4 space-y-4">
+                          {selected.observacoes.length > 0 ? (
+                            <div className="space-y-3">
+                              {selected.observacoes.map((obs) => (
+                                <div key={obs.id} className="bg-slate-50 border p-3 rounded-md text-sm">
+                                  <div className="text-slate-800">{obs.text}</div>
+                                  <div className="text-xs text-slate-500 mt-2 flex justify-between">
+                                    <span className="font-medium">{obs.author}</span>
+                                    <span>{obs.date}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-slate-500 text-center py-2">
+                              Nenhuma observação registrada ainda.
+                            </div>
+                          )}
+                          
+                          <div className="space-y-2 mt-4 pt-4 border-t">
+                            <label className="text-sm font-medium text-slate-700">Nova observação</label>
+                            <Textarea 
+                              placeholder="Digite uma nota sobre o andamento..." 
+                              value={newObs}
+                              onChange={(e) => setNewObs(e.target.value)}
+                              className="resize-none"
+                            />
+                            <div className="flex justify-end">
+                              <Button size="sm" onClick={handleAddObservation} disabled={!newObs.trim()}>
+                                Adicionar Nota
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status Change Actions */}
+                      <div className="rounded-lg border bg-slate-900 text-white shadow-sm p-5">
+                        <h3 className="text-sm font-medium mb-4 text-slate-300">Ações de Mudança de Status</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <Button 
+                            variant={selected.status === 'novo' ? "secondary" : "outline"}
+                            className={selected.status !== 'novo' ? "border-slate-700 hover:bg-slate-800 text-slate-300" : ""}
+                            onClick={() => handleStatusChange("novo")}
+                          >
+                            <Clock className="h-4 w-4 mr-2" /> Novo
                           </Button>
-                          <Button type="button" data-testid="button-set-aprovado">
-                            Aprovar
+                          <Button 
+                            variant={selected.status === 'em_analise' ? "secondary" : "outline"}
+                            className={selected.status !== 'em_analise' ? "border-slate-700 hover:bg-slate-800 text-slate-300" : "bg-amber-600 hover:bg-amber-700 text-white"}
+                            onClick={() => handleStatusChange("em_analise")}
+                          >
+                            <Shield className="h-4 w-4 mr-2" /> Em análise
                           </Button>
-                          <Button type="button" variant="destructive" data-testid="button-set-indeferido">
-                            Indeferir
+                          <Button 
+                            variant={selected.status === 'aprovado' ? "secondary" : "outline"}
+                            className={selected.status !== 'aprovado' ? "border-slate-700 hover:bg-slate-800 text-slate-300" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
+                            onClick={() => handleStatusChange("aprovado")}
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-2" /> Aprovar
                           </Button>
-                          <Button type="button" variant="secondary" data-testid="button-add-note">
-                            Registrar observação
+                          <Button 
+                            variant={selected.status === 'indeferido' ? "secondary" : "outline"}
+                            className={selected.status !== 'indeferido' ? "border-slate-700 hover:bg-slate-800 text-slate-300" : "bg-rose-600 hover:bg-rose-700 text-white"}
+                            onClick={() => handleStatusChange("indeferido")}
+                          >
+                            <XCircle className="h-4 w-4 mr-2" /> Indeferir
                           </Button>
                         </div>
-                        <div className="text-xs text-slate-500" data-testid="text-analise-note">
-                          Nesta versão de protótipo, os botões apenas demonstram a interface (sem persistência).
-                        </div>
                       </div>
-                    </div>
 
-                    <Separator />
-
-                    <div className="flex items-center justify-end gap-3">
-                      <Button type="button" variant="outline" onClick={() => setSelected(null)} data-testid="button-close-sheet">
-                        Fechar
-                      </Button>
                     </div>
-                  </div>
-                ) : null}
+                  </>
+                )}
               </SheetContent>
             </Sheet>
           </div>
