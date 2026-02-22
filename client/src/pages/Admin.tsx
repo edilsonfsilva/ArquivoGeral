@@ -200,6 +200,17 @@ const initialMockUsers: SystemUser[] = [
 export default function Admin() {
   const [, setLocation] = useLocation();
   const [requests, setRequests] = useState<RequestItem[]>(initialMockRequests);
+  
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("mock_requests");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setRequests([...parsed, ...initialMockRequests]);
+      }
+    } catch (err) {}
+  }, []);
+
   const [users, setUsers] = useState<SystemUser[]>(initialMockUsers);
   const [currentUser, setCurrentUser] = useState<SystemUser>(initialMockUsers[0]);
 
@@ -869,6 +880,12 @@ export default function Admin() {
                                 onClick={() => {
                                   toast({ title: "Download iniciado", description: "O arquivo está sendo baixado." });
                                   // Mock download behavior
+                                  const link = document.createElement("a");
+                                  link.href = "data:text/plain;charset=utf-8,Mock%20file%20content";
+                                  link.download = selected.anexo!.name;
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
                                 }}
                               >
                                 <Download className="h-4 w-4" />

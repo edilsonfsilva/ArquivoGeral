@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, CheckCircle2, FileText, Scale, Info, Paperclip, X } from "lucide-react";
+import { IMaskInput } from "react-imask";
 
 import { Label } from "@/components/ui/label";
 
@@ -94,6 +95,39 @@ export default function Home() {
     // Simulate API delay
     setTimeout(() => {
       setIsSubmitted(true);
+      
+      // Store in localStorage to simulate sending to admin panel
+      try {
+        const stored = localStorage.getItem("mock_requests");
+        const parsed = stored ? JSON.parse(stored) : [];
+        const newReq = {
+          id: `AG-${Math.floor(100000 + Math.random() * 900000)}`,
+          createdAt: new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
+          status: "novo",
+          solicitante: {
+            nome: values.nomeCompleto,
+            cpf: values.cpf,
+            whatsapp: values.whatsapp,
+            email: values.email,
+            oab: values.oab,
+          },
+          processo: {
+            tipoNumeracao: values.tipoNumeracao,
+            numero: values.numeroProcesso,
+            partes: values.partes,
+            segredoJustica: values.segredoJustica,
+            observacao: values.observacao,
+          },
+          anexo: values.procuracao ? {
+            name: values.procuracao.name,
+            sizeKB: Math.ceil(values.procuracao.size / 1024),
+            type: values.procuracao.type,
+          } : undefined,
+          observacoes: []
+        };
+        localStorage.setItem("mock_requests", JSON.stringify([newReq, ...parsed]));
+      } catch (err) {}
+
       toast({
         title: "Solicitação Enviada",
         description: "Seu pedido foi registrado com sucesso. Verifique seu e-mail.",
@@ -200,7 +234,14 @@ export default function Home() {
                         <FormItem>
                           <FormLabel>CPF</FormLabel>
                           <FormControl>
-                            <Input placeholder="000.000.000-00" {...field} />
+                            <IMaskInput
+                              mask="000.000.000-00"
+                              value={field.value}
+                              unmask={false}
+                              onAccept={(value) => field.onChange(value)}
+                              placeholder="000.000.000-00"
+                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -214,7 +255,14 @@ export default function Home() {
                         <FormItem>
                           <FormLabel>WhatsApp</FormLabel>
                           <FormControl>
-                            <Input placeholder="(00) 00000-0000" {...field} />
+                            <IMaskInput
+                              mask="(00) 00000-0000"
+                              value={field.value}
+                              unmask={false}
+                              onAccept={(value) => field.onChange(value)}
+                              placeholder="(00) 00000-0000"
+                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -434,7 +482,18 @@ export default function Home() {
                         <FormItem className="col-span-1 md:col-span-2">
                           <FormLabel>Número do Processo</FormLabel>
                           <FormControl>
-                            <Input placeholder="0000000-00.0000.8.17.0000" {...field} />
+                            {form.watch("tipoNumeracao") === "npu" ? (
+                              <IMaskInput
+                                mask="0000000-00.0000.0.00.0000"
+                                value={field.value}
+                                unmask={false}
+                                onAccept={(value) => field.onChange(value)}
+                                placeholder="0000000-00.0000.8.17.0000"
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                              />
+                            ) : (
+                               <Input placeholder="Número de tombo ou formato antigo..." {...field} />
+                            )}
                           </FormControl>
                           <FormMessage />
                         </FormItem>
