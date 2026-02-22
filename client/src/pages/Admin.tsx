@@ -193,8 +193,7 @@ const initialMockRequests: RequestItem[] = [
 ];
 
 const initialMockUsers: SystemUser[] = [
-  { id: "usr-1", name: "João Silva", email: "admin@tjpe.jus.br", role: "admin", password: "123" },
-  { id: "usr-2", name: "Ana Souza", email: "atendente@tjpe.jus.br", role: "atendente", password: "123" },
+  { id: "usr-1", name: "Admin", email: "edilson.ferreira@tjpe.jus.br", role: "admin", password: "MinhaSenha!@#" }
 ];
 
 export default function Admin() {
@@ -254,6 +253,10 @@ export default function Admin() {
   const [selected, setSelected] = useState<RequestItem | null>(null);
   const [editingMode, setEditingMode] = useState(false);
   const [editForm, setEditForm] = useState<RequestItem | null>(null);
+
+  const [userSheetOpen, setUserSheetOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
+  const [userForm, setUserForm] = useState({ name: "", email: "", password: "", role: "atendente" as UserRole });
 
   const [newObs, setNewObs] = useState("");
   const { toast } = useToast();
@@ -371,25 +374,6 @@ export default function Admin() {
                     <LogOut className="h-4 w-4 mr-1.5" /> Sair
                   </Button>
                 </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-slate-700">Simular acesso como:</label>
-                <Select
-                  value={currentUser.id}
-                  onValueChange={(val) => setCurrentUser(users.find((u) => u.id === val) || users[0])}
-                >
-                  <SelectTrigger className="w-[240px] bg-slate-50">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.name} ({u.role === "admin" ? "Administrador" : "Atendente"})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             </div>
 
@@ -566,13 +550,9 @@ export default function Admin() {
                         <p className="text-sm text-slate-500 mt-1">Adicione ou remova permissões de acesso ao painel.</p>
                       </div>
                       <Button onClick={() => {
-                        const name = prompt("Nome do usuário:");
-                        const email = prompt("E-mail do usuário:");
-                        const password = prompt("Senha do usuário:");
-                        if (name && email && password) {
-                          updateUsers([...users, { id: `usr-${Date.now()}`, name, email, password, role: "atendente" }]);
-                          toast({ title: "Usuário adicionado" });
-                        }
+                        setEditingUser(null);
+                        setUserForm({ name: "", email: "", password: "", role: "atendente" });
+                        setUserSheetOpen(true);
                       }}>
                         <UserCog className="h-4 w-4 mr-2" />
                         Novo Usuário
@@ -595,12 +575,9 @@ export default function Admin() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => {
-                                  const newName = prompt("Editar Nome:", u.name) || u.name;
-                                  const newEmail = prompt("Editar E-mail:", u.email) || u.email;
-                                  const newPass = prompt("Editar Senha (ou deixe vazio para manter):", "") || u.password;
-                                  
-                                  updateUsers(users.map(user => user.id === u.id ? { ...user, name: newName, email: newEmail, password: newPass } : user));
-                                  toast({ title: "Usuário atualizado" });
+                                  setEditingUser(u);
+                                  setUserForm({ name: u.name, email: u.email, password: u.password || "", role: u.role });
+                                  setUserSheetOpen(true);
                                 }}
                               >
                                 <Edit className="h-4 w-4 mr-1" /> Editar
@@ -1016,6 +993,106 @@ export default function Admin() {
               </SheetContent>
             </Sheet>
           </div>
+
+          <Sheet open={userSheetOpen} onOpenChange={setUserSheetOpen}>
+            <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle className="font-serif text-xl">
+                  {editingUser ? "Editar Usuário" : "Novo Usuário"}
+                </SheetTitle>
+                <SheetDescription>
+                  Preencha os dados do usuário abaixo.
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="mt-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Nome Completo</label>
+                  <Input
+                    value={userForm.name}
+                    onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                    placeholder="João Silva"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">E-mail</label>
+                  <Input
+                    type="email"
+                    value={userForm.email}
+                    onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                    placeholder="usuario@tjpe.jus.br"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Senha {editingUser && <span className="text-slate-500 font-normal">(deixe em branco para manter)</span>}
+                  </label>
+                  <Input
+                    type="password"
+                    value={userForm.password}
+                    onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                    placeholder="***"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Perfil</label>
+                  <Select
+                    value={userForm.role}
+                    onValueChange={(val: UserRole) => setUserForm({ ...userForm, role: val })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Administrador</SelectItem>
+                      <SelectItem value="atendente">Atendente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="pt-4 flex gap-2 justify-end">
+                  <Button variant="outline" onClick={() => setUserSheetOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={() => {
+                    if (!userForm.name || !userForm.email || (!editingUser && !userForm.password)) {
+                      toast({ title: "Preencha os campos obrigatórios", variant: "destructive" });
+                      return;
+                    }
+                    if (editingUser) {
+                      updateUsers(users.map(u => u.id === editingUser.id ? { 
+                        ...u, 
+                        name: userForm.name, 
+                        email: userForm.email, 
+                        role: userForm.role,
+                        password: userForm.password || u.password
+                      } : u));
+                      if (currentUser.id === editingUser.id && currentUser.role !== userForm.role) {
+                        setCurrentUser({ ...currentUser, role: userForm.role });
+                      }
+                      toast({ title: "Usuário atualizado com sucesso" });
+                    } else {
+                      updateUsers([...users, { 
+                        id: `usr-${Date.now()}`, 
+                        name: userForm.name, 
+                        email: userForm.email, 
+                        password: userForm.password,
+                        role: userForm.role 
+                      }]);
+                      toast({ title: "Usuário adicionado com sucesso" });
+                    }
+                    setUserSheetOpen(false);
+                  }}>
+                    Salvar
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+
         </div>
       </main>
     </div>

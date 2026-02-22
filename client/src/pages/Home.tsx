@@ -553,7 +553,6 @@ export default function Home() {
       <footer className="py-6 bg-slate-900 text-slate-400 text-center text-sm">
         <div className="container mx-auto px-4">
           <p>© {new Date().getFullYear()} Tribunal de Justiça de Pernambuco - Arquivo Geral</p>
-          <p className="text-xs mt-1 text-slate-600">Desenvolvido para fins de demonstração</p>
           <div className="mt-3">
             <Link href="/admin" className="text-slate-300 hover:text-white underline-offset-4 hover:underline" data-testid="link-admin">
               Acessar Administração

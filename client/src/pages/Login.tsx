@@ -9,8 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // Initial mock users matching Admin.tsx
 const initialMockUsers = [
-  { id: "usr-1", name: "João Silva", email: "admin@tjpe.jus.br", role: "admin", password: "123" },
-  { id: "usr-2", name: "Ana Souza", email: "atendente@tjpe.jus.br", role: "atendente", password: "123" },
+  { id: "usr-1", name: "Admin", email: "edilson.ferreira@tjpe.jus.br", role: "admin", password: "MinhaSenha!@#" }
 ];
 
 export const checkAuth = () => {
@@ -90,17 +89,6 @@ export default function Login() {
               />
             </div>
             
-            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-3 text-sm flex gap-3 items-start mt-6">
-              <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold mb-1">Credenciais de teste (Protótipo):</p>
-                <ul className="list-disc pl-4 space-y-1 text-xs">
-                  <li><strong>Admin:</strong> admin@tjpe.jus.br / 123</li>
-                  <li><strong>Atendente:</strong> atendente@tjpe.jus.br / 123</li>
-                </ul>
-              </div>
-            </div>
-
             <Button type="submit" className="w-full mt-4 gap-2 text-base h-11">
               <LogIn className="h-4 w-4" /> Entrar no Sistema
             </Button>
