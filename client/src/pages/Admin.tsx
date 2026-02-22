@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Clock,
@@ -32,7 +33,6 @@ import {
   Line,
 } from "recharts";
 
-
 import { Header } from "@/components/layout/Header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -56,49 +55,69 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
+import { queryClient } from "@/lib/queryClient";
+import {
+  getRequests,
+  updateRequest,
+  deleteRequest,
+  getObservations,
+  addObservation,
+  getUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  getDashboard,
+  logout,
+  getMe,
+} from "@/lib/api";
 
 type RequestStatus = "novo" | "em_analise" | "aprovado" | "indeferido";
 type UserRole = "admin" | "atendente";
 
-type Observation = {
-  id: string;
-  text: string;
-  author: string;
-  date: string;
-};
-
-type RequestItem = {
-  id: string;
-  createdAt: string;
+type ApiRequest = {
+  id: number;
+  protocolId: string;
   status: RequestStatus;
-  solicitante: {
-    nome: string;
-    cpf: string;
-    whatsapp: string;
-    email: string;
-    oab?: string;
-  };
-  processo: {
-    tipoNumeracao: "npu" | "tombo";
-    numero: string;
-    partes: string;
-    segredoJustica: "sim" | "nao";
-    observacao?: string;
-  };
-  anexo?: {
-    name: string;
-    sizeKB: number;
-    type: string;
-  };
-  observacoes: Observation[];
+  nomeCompleto: string;
+  cpf: string;
+  whatsapp: string;
+  email: string;
+  oab: string | null;
+  tipoNumeracao: string;
+  numeroProcesso: string;
+  partes: string;
+  segredoJustica: string;
+  observacao: string | null;
+  anexoName: string | null;
+  anexoSize: number | null;
+  anexoType: string | null;
+  createdAt: string;
 };
 
-type SystemUser = {
-  id: string;
+type ApiObservation = {
+  id: number;
+  requestId: number;
+  text: string;
+  authorName: string;
+  authorRole: string;
+  createdAt: string;
+};
+
+type ApiUser = {
+  id: number;
   name: string;
   email: string;
   role: UserRole;
-  password?: string;
+};
+
+type DashboardData = {
+  today: number;
+  week: number;
+  byMonth: { month: string; count: number }[];
+  byHour: { hour: string; count: number }[];
+  topRequesters: { name: string; count: number }[];
+  topAttendants: { name: string; count: number }[];
+  byStatus: { status: string; count: number }[];
 };
 
 const statusLabel: Record<RequestStatus, string> = {
@@ -128,155 +147,111 @@ function statusIcon(status: RequestStatus) {
   }
 }
 
-const initialMockRequests: RequestItem[] = [
-  {
-    id: "AG-000184",
-    createdAt: "2026-02-11 10:42",
-    status: "novo",
-    solicitante: {
-      nome: "Maria Eduarda Santos",
-      cpf: "111.222.333-44",
-      whatsapp: "(81) 98888-7777",
-      email: "maria.santos@exemplo.com",
-      oab: "12345-PE",
-    },
-    processo: {
-      tipoNumeracao: "npu",
-      numero: "0000000-00.0000.8.17.0000",
-      partes: "João da Silva x Empresa X",
-      segredoJustica: "nao",
-      observacao: "Solicito prioridade por prazo processual.",
-    },
-    anexo: {
-      name: "procuracao.pdf",
-      sizeKB: 842,
-      type: "application/pdf",
-    },
-    observacoes: [],
-  },
-  {
-    id: "AG-000183",
-    createdAt: "2026-02-11 09:17",
-    status: "em_analise",
-    solicitante: {
-      nome: "Carlos Henrique Lima",
-      cpf: "555.666.777-88",
-      whatsapp: "(81) 99999-0000",
-      email: "carlos.lima@exemplo.com",
-    },
-    processo: {
-      tipoNumeracao: "tombo",
-      numero: "TOMBO-1998-02193",
-      partes: "Estado de Pernambuco x Fulano de Tal",
-      segredoJustica: "sim",
-    },
-    observacoes: [
-      {
-        id: "obs-1",
-        text: "Processo físico localizado no arquivo central. Aguardando digitalização parcial.",
-        author: "Ana Souza (Atendente)",
-        date: "2026-02-11 14:30",
-      },
-    ],
-  },
-  {
-    id: "AG-000182",
-    createdAt: "2026-02-10 16:08",
-    status: "aprovado",
-    solicitante: {
-      nome: "Ana Paula Ribeiro",
-      cpf: "999.888.777-66",
-      whatsapp: "(81) 97777-6666",
-      email: "ana.ribeiro@exemplo.com",
-    },
-    processo: {
-      tipoNumeracao: "npu",
-      numero: "0001111-22.2011.8.17.0001",
-      partes: "Beltrano x Sicrano",
-      segredoJustica: "nao",
-      observacao: "Consulta para fins de pesquisa.",
-    },
-    anexo: {
-      name: "habilitacao.jpg",
-      sizeKB: 311,
-      type: "image/jpeg",
-    },
-    observacoes: [],
-  },
-];
-
-const initialMockUsers: SystemUser[] = [
-  { id: "usr-1", name: "Admin", email: "edilson.ferreira@tjpe.jus.br", role: "admin", password: "MinhaSenha!@#" }
-];
-
 export default function Admin() {
   const [, setLocation] = useLocation();
-  const [requests, setRequests] = useState<RequestItem[]>(initialMockRequests);
-  
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("mock_requests");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setRequests([...parsed, ...initialMockRequests]);
-      }
-    } catch (err) {}
-  }, []);
+  const { toast } = useToast();
 
-  const [users, setUsers] = useState<SystemUser[]>(initialMockUsers);
-  const [currentUser, setCurrentUser] = useState<SystemUser>(initialMockUsers[0]);
+  const { data: currentUser, isLoading: userLoading, isError: userError } = useQuery<ApiUser>({
+    queryKey: ["/api/auth/me"],
+    queryFn: getMe,
+  });
 
   useEffect(() => {
-    try {
-      const storedUsers = localStorage.getItem("mock_users");
-      if (storedUsers) {
-        const parsed = JSON.parse(storedUsers);
-        setUsers(parsed);
-      } else {
-        localStorage.setItem("mock_users", JSON.stringify(initialMockUsers));
-      }
-    } catch (err) {}
-  }, []);
-
-  const updateUsers = (newUsers: SystemUser[]) => {
-    setUsers(newUsers);
-    localStorage.setItem("mock_users", JSON.stringify(newUsers));
-  };
-
-  useEffect(() => {
-    // Only check auth if we're in the browser environment
-    if (typeof window !== "undefined") {
-      const isAuth = localStorage.getItem("adminAuth") === "true";
-      if (!isAuth) {
-        setLocation("/admin");
-      } else {
-        const role = localStorage.getItem("adminRole") as UserRole;
-        if (role === "admin" || role === "atendente") {
-          const userWithRole = users.find(u => u.role === role);
-          if (userWithRole) {
-             setCurrentUser(userWithRole);
-          }
-        }
-      }
+    if (userError) {
+      setLocation("/admin");
     }
-  }, [setLocation, users]);
+  }, [userError, setLocation]);
+
+  const { data: requests = [], isLoading: requestsLoading } = useQuery<ApiRequest[]>({
+    queryKey: ["/api/requests"],
+    queryFn: getRequests,
+    enabled: !!currentUser,
+  });
+
+  const { data: users = [], isLoading: usersLoading } = useQuery<ApiUser[]>({
+    queryKey: ["/api/users"],
+    queryFn: getUsers,
+    enabled: !!currentUser && currentUser.role === "admin",
+  });
+
+  const { data: dashboardData } = useQuery<DashboardData>({
+    queryKey: ["/api/dashboard"],
+    queryFn: getDashboard,
+    enabled: !!currentUser && currentUser.role === "admin",
+  });
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "todos">("todos");
-  const [selected, setSelected] = useState<RequestItem | null>(null);
+  const [selected, setSelected] = useState<ApiRequest | null>(null);
   const [editingMode, setEditingMode] = useState(false);
-  const [editForm, setEditForm] = useState<RequestItem | null>(null);
+  const [editForm, setEditForm] = useState<Partial<ApiRequest>>({});
 
   const [userSheetOpen, setUserSheetOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
+  const [editingUser, setEditingUser] = useState<ApiUser | null>(null);
   const [userForm, setUserForm] = useState({ name: "", email: "", password: "", role: "atendente" as UserRole });
 
   const [newObs, setNewObs] = useState("");
-  const { toast } = useToast();
+
+  const { data: observations = [], isLoading: obsLoading } = useQuery<ApiObservation[]>({
+    queryKey: ["/api/requests", selected?.id, "observations"],
+    queryFn: () => getObservations(selected!.id),
+    enabled: !!selected,
+  });
+
+  const updateRequestMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => updateRequest(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
+    },
+  });
+
+  const deleteRequestMutation = useMutation({
+    mutationFn: (id: number) => deleteRequest(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
+    },
+  });
+
+  const addObservationMutation = useMutation({
+    mutationFn: ({ requestId, text }: { requestId: number; text: string }) => addObservation(requestId, text),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/requests", selected?.id, "observations"] });
+    },
+  });
+
+  const createUserMutation = useMutation({
+    mutationFn: (data: any) => createUser(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => updateUser(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: (id: number) => deleteUser(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+    },
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: logout,
+    onSuccess: () => {
+      queryClient.clear();
+      setLocation("/admin");
+    },
+  });
 
   const stats = useMemo(() => {
     const base = { novo: 0, em_analise: 0, aprovado: 0, indeferido: 0 } as Record<RequestStatus, number>;
-    for (const r of requests) base[r.status]++;
+    for (const r of requests) base[r.status as RequestStatus]++;
     return base;
   }, [requests]);
 
@@ -287,61 +262,66 @@ export default function Admin() {
       .filter((r) => {
         if (!q) return true;
         return (
-          r.id.toLowerCase().includes(q) ||
-          r.solicitante.nome.toLowerCase().includes(q) ||
-          r.processo.numero.toLowerCase().includes(q) ||
-          r.processo.partes.toLowerCase().includes(q)
+          r.protocolId.toLowerCase().includes(q) ||
+          r.nomeCompleto.toLowerCase().includes(q) ||
+          r.numeroProcesso.toLowerCase().includes(q) ||
+          r.partes.toLowerCase().includes(q)
         );
       });
   }, [query, statusFilter, requests]);
 
   const handleSaveEdit = () => {
     if (!editForm || !selected) return;
-    setRequests((prev) => prev.map((r) => r.id === editForm.id ? editForm : r));
-    setSelected(editForm);
-    setEditingMode(false);
-    toast({ title: "Solicitação atualizada" });
+    updateRequestMutation.mutate(
+      { id: selected.id, data: editForm },
+      {
+        onSuccess: (updatedRequest) => {
+          setSelected(updatedRequest);
+          setEditingMode(false);
+          toast({ title: "Solicitação atualizada" });
+        },
+      }
+    );
   };
 
   const handleStatusChange = (status: RequestStatus) => {
     if (!selected) return;
-    setRequests((prev) =>
-      prev.map((r) => (r.id === selected.id ? { ...r, status } : r))
+    updateRequestMutation.mutate(
+      { id: selected.id, data: { status } },
+      {
+        onSuccess: (updatedRequest) => {
+          setSelected(updatedRequest);
+          toast({
+            title: "Status atualizado",
+            description: `A solicitação ${selected.protocolId} foi alterada para ${statusLabel[status]}.`,
+          });
+        },
+      }
     );
-    setSelected((prev) => (prev ? { ...prev, status } : null));
-    toast({
-      title: "Status atualizado",
-      description: `A solicitação ${selected.id} foi alterada para ${statusLabel[status]}.`,
-    });
   };
 
   const handleAddObservation = () => {
     if (!selected || !newObs.trim()) return;
-    const obs: Observation = {
-      id: `obs-${Date.now()}`,
-      text: newObs.trim(),
-      author: `${currentUser.name} (${currentUser.role === 'admin' ? 'Admin' : 'Atendente'})`,
-      date: new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
-    };
-
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === selected.id ? { ...r, observacoes: [...r.observacoes, obs] } : r
-      )
+    addObservationMutation.mutate(
+      { requestId: selected.id, text: newObs.trim() },
+      {
+        onSuccess: () => {
+          setNewObs("");
+          toast({ title: "Observação adicionada com sucesso" });
+        },
+      }
     );
-    setSelected((prev) =>
-      prev ? { ...prev, observacoes: [...prev.observacoes, obs] } : null
-    );
-    setNewObs("");
-    toast({ title: "Observação adicionada com sucesso" });
   };
 
   const handleDeleteRequest = () => {
     if (!selected) return;
-    if (confirm(`Tem certeza que deseja excluir a solicitação ${selected.id}?`)) {
-      setRequests((prev) => prev.filter((r) => r.id !== selected.id));
-      setSelected(null);
-      toast({ title: "Solicitação excluída", variant: "destructive" });
+    if (confirm(`Tem certeza que deseja excluir a solicitação ${selected.protocolId}?`)) {
+      deleteRequestMutation.mutate(selected.id, {
+        onSuccess: () => {
+          setSelected(null);
+          toast({ title: "Solicitação excluída", variant: "destructive" });
+        },
+      });
     }
   };
 
@@ -350,16 +330,16 @@ export default function Admin() {
     const csvContent = [
       headers.join(";"),
       ...filtered.map(r => [
-        r.id,
+        r.protocolId,
         r.createdAt,
         r.status,
-        `"${r.solicitante.nome}"`,
-        r.solicitante.cpf,
-        r.solicitante.email,
-        r.solicitante.whatsapp,
-        `"${r.processo.numero}"`,
-        `"${r.processo.partes}"`,
-        r.processo.segredoJustica
+        `"${r.nomeCompleto}"`,
+        r.cpf,
+        r.email,
+        r.whatsapp,
+        `"${r.numeroProcesso}"`,
+        `"${r.partes}"`,
+        r.segredoJustica
       ].join(";"))
     ].join("\n");
 
@@ -375,10 +355,24 @@ export default function Admin() {
   };
 
   const copyToClipboard = (text: string, label: string) => {
-
     navigator.clipboard.writeText(text);
     toast({ title: "Copiado", description: `${label} copiado para a área de transferência.` });
   };
+
+  if (userLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50/50 flex flex-col">
+        <Header />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-slate-500 text-lg">Carregando...</div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col">
@@ -408,11 +402,7 @@ export default function Admin() {
                     variant="ghost" 
                     size="sm" 
                     className="text-slate-500 hover:text-slate-700 h-auto p-0"
-                    onClick={() => {
-                      localStorage.removeItem("adminAuth");
-                      localStorage.removeItem("adminRole");
-                      setLocation("/admin");
-                    }}
+                    onClick={() => logoutMutation.mutate()}
                   >
                     <LogOut className="h-4 w-4 mr-1.5" /> Sair
                   </Button>
@@ -541,27 +531,27 @@ export default function Admin() {
                           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                             <div className="space-y-1.5 min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-semibold text-slate-900">{r.id}</span>
-                                <Badge variant={statusBadgeVariant[r.status]} className="gap-1">
-                                  {statusIcon(r.status)}
-                                  {statusLabel[r.status]}
+                                <span className="font-semibold text-slate-900">{r.protocolId}</span>
+                                <Badge variant={statusBadgeVariant[r.status as RequestStatus]} className="gap-1">
+                                  {statusIcon(r.status as RequestStatus)}
+                                  {statusLabel[r.status as RequestStatus]}
                                 </Badge>
-                                {r.processo.segredoJustica === "sim" && (
+                                {r.segredoJustica === "sim" && (
                                   <Badge variant="outline" className="text-amber-700 border-amber-200 bg-amber-50">
                                     Sigilo
                                   </Badge>
                                 )}
-                                {r.anexo && (
+                                {r.anexoName && (
                                   <Badge variant="outline" className="gap-1 bg-slate-100">
                                     <Paperclip className="h-3 w-3" /> Anexo
                                   </Badge>
                                 )}
                               </div>
                               <div className="text-sm font-medium text-slate-800 truncate">
-                                {r.processo.numero} • {r.processo.partes}
+                                {r.numeroProcesso} • {r.partes}
                               </div>
                               <div className="text-xs text-slate-500">
-                                {r.solicitante.nome} • Registrado em: {r.createdAt}
+                                {r.nomeCompleto} • Registrado em: {new Date(r.createdAt).toLocaleString("pt-BR")}
                               </div>
                             </div>
 
@@ -601,13 +591,7 @@ export default function Admin() {
                         <CardContent>
                           <div className="h-[300px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={[
-                                { name: "Jan", atendimentos: 120 },
-                                { name: "Fev", atendimentos: 180 },
-                                { name: "Mar", atendimentos: 250 },
-                                { name: "Abr", atendimentos: 150 },
-                                { name: "Mai", atendimentos: Math.max(50, stats.novo + stats.aprovado + stats.em_analise + stats.indeferido) },
-                              ]}>
+                              <BarChart data={(dashboardData?.byMonth || []).map(m => ({ name: m.month, atendimentos: m.count }))}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="name" />
                                 <YAxis />
@@ -626,13 +610,7 @@ export default function Admin() {
                         <CardContent>
                           <div className="h-[200px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={[
-                                { hora: "08h", chamados: 12 },
-                                { hora: "10h", chamados: 45 },
-                                { hora: "14h", chamados: 55 },
-                                { hora: "16h", chamados: 30 },
-                                { hora: "18h", chamados: 10 },
-                              ]}>
+                              <LineChart data={(dashboardData?.byHour || []).map(h => ({ hora: h.hour, chamados: h.count }))}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="hora" />
                                 <YAxis />
@@ -650,15 +628,10 @@ export default function Admin() {
                         </CardHeader>
                         <CardContent>
                           <div className="space-y-4">
-                            {[
-                              { nome: "João da Silva", qtd: 15 },
-                              { nome: "Maria Santos", qtd: 12 },
-                              { nome: "Carlos Eduardo", qtd: 8 },
-                              { nome: "Ana Paula", qtd: 5 },
-                            ].map((s, i) => (
+                            {(dashboardData?.topRequesters || []).map((s, i) => (
                               <div key={i} className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-slate-700">{s.nome}</span>
-                                <Badge variant="secondary">{s.qtd} pedidos</Badge>
+                                <span className="text-sm font-medium text-slate-700">{s.name}</span>
+                                <Badge variant="secondary">{s.count} pedidos</Badge>
                               </div>
                             ))}
                           </div>
@@ -671,15 +644,11 @@ export default function Admin() {
                         </CardHeader>
                         <CardContent>
                           <div className="space-y-4">
-                            {[
-                              { nome: "Ana Souza", mov: 84 },
-                              { nome: "Marcos Lima", mov: 62 },
-                              { nome: "Admin", mov: 21 },
-                            ].map((a, i) => (
+                            {(dashboardData?.topAttendants || []).map((a, i) => (
                               <div key={i} className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-slate-700">{a.nome}</span>
+                                <span className="text-sm font-medium text-slate-700">{a.name}</span>
                                 <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                                  {a.mov} interações
+                                  {a.count} interações
                                 </Badge>
                               </div>
                             ))}
@@ -691,15 +660,13 @@ export default function Admin() {
                         <Card className="bg-slate-900 text-white">
                           <CardContent className="p-6">
                             <div className="text-sm text-slate-400 mb-1">Atendimentos Hoje</div>
-                            <div className="text-3xl font-bold">24</div>
-                            <div className="text-xs text-emerald-400 mt-2">↑ 12% em relação a ontem</div>
+                            <div className="text-3xl font-bold">{dashboardData?.today ?? 0}</div>
                           </CardContent>
                         </Card>
                         <Card className="bg-primary text-white">
                           <CardContent className="p-6">
                             <div className="text-sm text-green-100 mb-1">Atendimentos na Semana</div>
-                            <div className="text-3xl font-bold">142</div>
-                            <div className="text-xs text-green-200 mt-2">↑ 5% em relação à semana passada</div>
+                            <div className="text-3xl font-bold">{dashboardData?.week ?? 0}</div>
                           </CardContent>
                         </Card>
                       </div>
@@ -740,7 +707,7 @@ export default function Admin() {
                                 size="sm"
                                 onClick={() => {
                                   setEditingUser(u);
-                                  setUserForm({ name: u.name, email: u.email, password: u.password || "", role: u.role });
+                                  setUserForm({ name: u.name, email: u.email, password: "", role: u.role });
                                   setUserSheetOpen(true);
                                 }}
                               >
@@ -749,9 +716,14 @@ export default function Admin() {
                               <Select
                                 value={u.role}
                                 onValueChange={(val: UserRole) => {
-                                  updateUsers(users.map(user => user.id === u.id ? { ...user, role: val } : user));
-                                  if (currentUser.id === u.id) setCurrentUser({ ...currentUser, role: val });
-                                  toast({ title: "Perfil atualizado" });
+                                  updateUserMutation.mutate(
+                                    { id: u.id, data: { role: val } },
+                                    {
+                                      onSuccess: () => {
+                                        toast({ title: "Perfil atualizado" });
+                                      },
+                                    }
+                                  );
                                 }}
                               >
                                 <SelectTrigger className="w-[130px] h-9">
@@ -769,8 +741,11 @@ export default function Admin() {
                                 onClick={() => {
                                   if (users.length === 1) return alert("Não é possível remover o único usuário.");
                                   if (confirm("Remover usuário?")) {
-                                    updateUsers(users.filter(user => user.id !== u.id));
-                                    toast({ title: "Usuário removido" });
+                                    deleteUserMutation.mutate(u.id, {
+                                      onSuccess: () => {
+                                        toast({ title: "Usuário removido" });
+                                      },
+                                    });
                                   }
                                 }}
                               >
@@ -787,7 +762,7 @@ export default function Admin() {
               )}
             </Tabs>
 
-            <Sheet open={!!selected} onOpenChange={(open) => (!open ? setSelected(null) : null)}>
+            <Sheet open={!!selected} onOpenChange={(open) => (!open ? (setSelected(null), setEditingMode(false)) : null)}>
               <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
                 {selected && (
                   <>
@@ -795,19 +770,30 @@ export default function Admin() {
                       <div className="flex items-center justify-between gap-4">
                         <div>
                           <SheetTitle className="font-serif text-2xl flex items-center gap-3">
-                            {selected.id}
-                            <Badge variant={statusBadgeVariant[selected.status]} className="text-sm">
-                              {statusLabel[selected.status]}
+                            {selected.protocolId}
+                            <Badge variant={statusBadgeVariant[selected.status as RequestStatus]} className="text-sm">
+                              {statusLabel[selected.status as RequestStatus]}
                             </Badge>
                           </SheetTitle>
                           <SheetDescription className="mt-1 text-slate-500">
-                            Registrado em {selected.createdAt}
+                            Registrado em {new Date(selected.createdAt).toLocaleString("pt-BR")}
                           </SheetDescription>
                         </div>
                         {currentUser.role === "admin" && !editingMode && (
                           <div className="flex gap-2">
                             <Button variant="outline" size="sm" onClick={() => {
-                              setEditForm(JSON.parse(JSON.stringify(selected)));
+                              setEditForm({
+                                nomeCompleto: selected.nomeCompleto,
+                                cpf: selected.cpf,
+                                whatsapp: selected.whatsapp,
+                                email: selected.email,
+                                oab: selected.oab,
+                                tipoNumeracao: selected.tipoNumeracao,
+                                numeroProcesso: selected.numeroProcesso,
+                                partes: selected.partes,
+                                segredoJustica: selected.segredoJustica,
+                                observacao: selected.observacao,
+                              });
                               setEditingMode(true);
                             }}>
                               <Edit className="h-4 w-4 mr-2" /> Editar
@@ -843,16 +829,16 @@ export default function Admin() {
                               <div className="text-xs text-slate-500">Número do processo</div>
                               {editingMode && editForm ? (
                                 <Input 
-                                  value={editForm.processo.numero} 
-                                  onChange={(e) => setEditForm({...editForm, processo: {...editForm.processo, numero: e.target.value}})}
+                                  value={editForm.numeroProcesso || ""} 
+                                  onChange={(e) => setEditForm({...editForm, numeroProcesso: e.target.value})}
                                   className="h-8 text-sm font-semibold"
                                 />
                               ) : (
                                 <div className="flex items-center gap-2">
-                                  <span className="text-base font-semibold text-slate-900">{selected.processo.numero}</span>
+                                  <span className="text-base font-semibold text-slate-900">{selected.numeroProcesso}</span>
                                   <Button
                                     variant="ghost" size="icon" className="h-6 w-6"
-                                    onClick={() => copyToClipboard(selected.processo.numero, "Número")}
+                                    onClick={() => copyToClipboard(selected.numeroProcesso, "Número")}
                                     title="Copiar número"
                                   >
                                     <Copy className="h-3.5 w-3.5 text-slate-400" />
@@ -864,8 +850,8 @@ export default function Admin() {
                               <div className="text-xs text-slate-500">Tipo de numeração</div>
                               {editingMode && editForm ? (
                                 <Select 
-                                  value={editForm.processo.tipoNumeracao}
-                                  onValueChange={(v: "npu" | "tombo") => setEditForm({...editForm, processo: {...editForm.processo, tipoNumeracao: v}})}
+                                  value={editForm.tipoNumeracao || ""}
+                                  onValueChange={(v) => setEditForm({...editForm, tipoNumeracao: v})}
                                 >
                                   <SelectTrigger className="h-8 text-sm uppercase"><SelectValue/></SelectTrigger>
                                   <SelectContent>
@@ -875,7 +861,7 @@ export default function Admin() {
                                 </Select>
                               ) : (
                                 <div className="text-sm font-medium text-slate-900 uppercase">
-                                  {selected.processo.tipoNumeracao}
+                                  {selected.tipoNumeracao}
                                 </div>
                               )}
                             </div>
@@ -885,16 +871,16 @@ export default function Admin() {
                             <div className="text-xs text-slate-500">Partes</div>
                             {editingMode && editForm ? (
                                 <Input 
-                                  value={editForm.processo.partes} 
-                                  onChange={(e) => setEditForm({...editForm, processo: {...editForm.processo, partes: e.target.value}})}
+                                  value={editForm.partes || ""} 
+                                  onChange={(e) => setEditForm({...editForm, partes: e.target.value})}
                                   className="h-8 text-sm"
                                 />
                               ) : (
                               <div className="flex items-center gap-2">
-                                <span className="text-sm text-slate-900">{selected.processo.partes}</span>
+                                <span className="text-sm text-slate-900">{selected.partes}</span>
                                 <Button
                                   variant="ghost" size="icon" className="h-6 w-6"
-                                  onClick={() => copyToClipboard(selected.processo.partes, "Partes")}
+                                  onClick={() => copyToClipboard(selected.partes, "Partes")}
                                   title="Copiar partes"
                                 >
                                   <Copy className="h-3.5 w-3.5 text-slate-400" />
@@ -908,8 +894,8 @@ export default function Admin() {
                               <div className="text-xs text-slate-500">Segredo de Justiça</div>
                               {editingMode && editForm ? (
                                 <Select 
-                                  value={editForm.processo.segredoJustica}
-                                  onValueChange={(v: "sim" | "nao") => setEditForm({...editForm, processo: {...editForm.processo, segredoJustica: v}})}
+                                  value={editForm.segredoJustica || ""}
+                                  onValueChange={(v) => setEditForm({...editForm, segredoJustica: v})}
                                 >
                                   <SelectTrigger className="h-8 text-sm"><SelectValue/></SelectTrigger>
                                   <SelectContent>
@@ -919,7 +905,7 @@ export default function Admin() {
                                 </Select>
                               ) : (
                                 <div className="text-sm text-slate-900">
-                                  {selected.processo.segredoJustica === "sim" ? (
+                                  {selected.segredoJustica === "sim" ? (
                                     <span className="text-amber-600 font-medium flex items-center gap-1">
                                       <Shield className="h-4 w-4" /> Sim
                                     </span>
@@ -927,18 +913,18 @@ export default function Admin() {
                                 </div>
                               )}
                             </div>
-                            {(selected.processo.observacao || editingMode) && (
+                            {(selected.observacao || editingMode) && (
                               <div className="space-y-1.5">
                                 <div className="text-xs text-slate-500">Observação do Solicitante</div>
                                 {editingMode && editForm ? (
                                   <Input 
-                                    value={editForm.processo.observacao || ""} 
-                                    onChange={(e) => setEditForm({...editForm, processo: {...editForm.processo, observacao: e.target.value}})}
+                                    value={editForm.observacao || ""} 
+                                    onChange={(e) => setEditForm({...editForm, observacao: e.target.value})}
                                     className="h-8 text-sm"
                                     placeholder="Nenhuma observação"
                                   />
                                 ) : (
-                                  <div className="text-sm text-slate-700 italic">"{selected.processo.observacao}"</div>
+                                  <div className="text-sm text-slate-700 italic">"{selected.observacao}"</div>
                                 )}
                               </div>
                             )}
@@ -956,28 +942,28 @@ export default function Admin() {
                             <div className="text-xs text-slate-500">Nome Completo</div>
                             {editingMode && editForm ? (
                               <Input 
-                                value={editForm.solicitante.nome} 
-                                onChange={(e) => setEditForm({...editForm, solicitante: {...editForm.solicitante, nome: e.target.value}})}
+                                value={editForm.nomeCompleto || ""} 
+                                onChange={(e) => setEditForm({...editForm, nomeCompleto: e.target.value})}
                                 className="h-8 text-sm"
                               />
                             ) : (
-                              <div className="text-sm text-slate-900">{selected.solicitante.nome}</div>
+                              <div className="text-sm text-slate-900">{selected.nomeCompleto}</div>
                             )}
                           </div>
                           <div className="space-y-1">
                             <div className="text-xs text-slate-500">CPF</div>
                             {editingMode && editForm ? (
                               <Input 
-                                value={editForm.solicitante.cpf} 
-                                onChange={(e) => setEditForm({...editForm, solicitante: {...editForm.solicitante, cpf: e.target.value}})}
+                                value={editForm.cpf || ""} 
+                                onChange={(e) => setEditForm({...editForm, cpf: e.target.value})}
                                 className="h-8 text-sm"
                               />
                             ) : (
                               <div className="flex items-center gap-2">
-                                <span className="text-sm text-slate-900">{selected.solicitante.cpf}</span>
+                                <span className="text-sm text-slate-900">{selected.cpf}</span>
                                 <Button
                                   variant="ghost" size="icon" className="h-6 w-6"
-                                  onClick={() => copyToClipboard(selected.solicitante.cpf, "CPF")}
+                                  onClick={() => copyToClipboard(selected.cpf, "CPF")}
                                 >
                                   <Copy className="h-3.5 w-3.5 text-slate-400" />
                                 </Button>
@@ -988,38 +974,38 @@ export default function Admin() {
                             <div className="text-xs text-slate-500">WhatsApp</div>
                             {editingMode && editForm ? (
                               <Input 
-                                value={editForm.solicitante.whatsapp} 
-                                onChange={(e) => setEditForm({...editForm, solicitante: {...editForm.solicitante, whatsapp: e.target.value}})}
+                                value={editForm.whatsapp || ""} 
+                                onChange={(e) => setEditForm({...editForm, whatsapp: e.target.value})}
                                 className="h-8 text-sm"
                               />
                             ) : (
-                              <div className="text-sm text-slate-900">{selected.solicitante.whatsapp}</div>
+                              <div className="text-sm text-slate-900">{selected.whatsapp}</div>
                             )}
                           </div>
                           <div className="space-y-1">
                             <div className="text-xs text-slate-500">E-mail</div>
                             {editingMode && editForm ? (
                               <Input 
-                                value={editForm.solicitante.email} 
-                                onChange={(e) => setEditForm({...editForm, solicitante: {...editForm.solicitante, email: e.target.value}})}
+                                value={editForm.email || ""} 
+                                onChange={(e) => setEditForm({...editForm, email: e.target.value})}
                                 className="h-8 text-sm"
                               />
                             ) : (
-                              <div className="text-sm text-slate-900">{selected.solicitante.email}</div>
+                              <div className="text-sm text-slate-900">{selected.email}</div>
                             )}
                           </div>
-                          {(selected.solicitante.oab || editingMode) && (
+                          {(selected.oab || editingMode) && (
                             <div className="space-y-1">
                               <div className="text-xs text-slate-500">OAB (Advogado)</div>
                               {editingMode && editForm ? (
                                 <Input 
-                                  value={editForm.solicitante.oab || ""} 
-                                  onChange={(e) => setEditForm({...editForm, solicitante: {...editForm.solicitante, oab: e.target.value}})}
+                                  value={editForm.oab || ""} 
+                                  onChange={(e) => setEditForm({...editForm, oab: e.target.value})}
                                   className="h-8 text-sm"
                                   placeholder="Opcional"
                                 />
                               ) : (
-                                <div className="text-sm font-medium text-slate-900">{selected.solicitante.oab}</div>
+                                <div className="text-sm font-medium text-slate-900">{selected.oab}</div>
                               )}
                             </div>
                           )}
@@ -1032,7 +1018,7 @@ export default function Admin() {
                           <div className="text-sm font-semibold text-slate-900">Procuração / Documento</div>
                         </div>
                         <div className="p-4">
-                          {selected.anexo ? (
+                          {selected.anexoName ? (
                             <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-4 py-3 shadow-sm">
                               <div className="flex items-center gap-3 min-w-0">
                                 <div className="bg-primary/10 p-2 rounded-full">
@@ -1040,10 +1026,10 @@ export default function Admin() {
                                 </div>
                                 <div>
                                   <div className="text-sm font-medium text-slate-900 truncate">
-                                    {selected.anexo.name}
+                                    {selected.anexoName}
                                   </div>
                                   <div className="text-xs text-slate-500 mt-0.5">
-                                    {selected.anexo.type} • {selected.anexo.sizeKB} KB
+                                    {selected.anexoType} • {selected.anexoSize} KB
                                   </div>
                                 </div>
                               </div>
@@ -1053,13 +1039,6 @@ export default function Admin() {
                                 className="gap-2 shrink-0"
                                 onClick={() => {
                                   toast({ title: "Download iniciado", description: "O arquivo está sendo baixado." });
-                                  // Mock download behavior
-                                  const link = document.createElement("a");
-                                  link.href = "data:text/plain;charset=utf-8,Mock%20file%20content";
-                                  link.download = selected.anexo!.name;
-                                  document.body.appendChild(link);
-                                  link.click();
-                                  document.body.removeChild(link);
                                 }}
                               >
                                 <Download className="h-4 w-4" />
@@ -1082,14 +1061,18 @@ export default function Admin() {
                           </div>
                         </div>
                         <div className="p-4 space-y-4">
-                          {selected.observacoes.length > 0 ? (
+                          {obsLoading ? (
+                            <div className="text-sm text-slate-500 text-center py-2">
+                              Carregando observações...
+                            </div>
+                          ) : observations.length > 0 ? (
                             <div className="space-y-3">
-                              {selected.observacoes.map((obs) => (
+                              {observations.map((obs) => (
                                 <div key={obs.id} className="bg-slate-50 border p-3 rounded-md text-sm">
                                   <div className="text-slate-800">{obs.text}</div>
                                   <div className="text-xs text-slate-500 mt-2 flex justify-between">
-                                    <span className="font-medium">{obs.author}</span>
-                                    <span>{obs.date}</span>
+                                    <span className="font-medium">{obs.authorName} ({obs.authorRole === 'admin' ? 'Admin' : 'Atendente'})</span>
+                                    <span>{new Date(obs.createdAt).toLocaleString("pt-BR")}</span>
                                   </div>
                                 </div>
                               ))}
@@ -1109,7 +1092,7 @@ export default function Admin() {
                               className="resize-none"
                             />
                             <div className="flex justify-end">
-                              <Button size="sm" onClick={handleAddObservation} disabled={!newObs.trim()}>
+                              <Button size="sm" onClick={handleAddObservation} disabled={!newObs.trim() || addObservationMutation.isPending}>
                                 Adicionar Nota
                               </Button>
                             </div>
@@ -1228,28 +1211,39 @@ export default function Admin() {
                       return;
                     }
                     if (editingUser) {
-                      updateUsers(users.map(u => u.id === editingUser.id ? { 
-                        ...u, 
-                        name: userForm.name, 
-                        email: userForm.email, 
+                      const data: any = {
+                        name: userForm.name,
+                        email: userForm.email,
                         role: userForm.role,
-                        password: userForm.password || u.password
-                      } : u));
-                      if (currentUser.id === editingUser.id && currentUser.role !== userForm.role) {
-                        setCurrentUser({ ...currentUser, role: userForm.role });
+                      };
+                      if (userForm.password) {
+                        data.password = userForm.password;
                       }
-                      toast({ title: "Usuário atualizado com sucesso" });
+                      updateUserMutation.mutate(
+                        { id: editingUser.id, data },
+                        {
+                          onSuccess: () => {
+                            toast({ title: "Usuário atualizado com sucesso" });
+                            setUserSheetOpen(false);
+                          },
+                        }
+                      );
                     } else {
-                      updateUsers([...users, { 
-                        id: `usr-${Date.now()}`, 
-                        name: userForm.name, 
-                        email: userForm.email, 
-                        password: userForm.password,
-                        role: userForm.role 
-                      }]);
-                      toast({ title: "Usuário adicionado com sucesso" });
+                      createUserMutation.mutate(
+                        {
+                          name: userForm.name,
+                          email: userForm.email,
+                          password: userForm.password,
+                          role: userForm.role,
+                        },
+                        {
+                          onSuccess: () => {
+                            toast({ title: "Usuário adicionado com sucesso" });
+                            setUserSheetOpen(false);
+                          },
+                        }
+                      );
                     }
-                    setUserSheetOpen(false);
                   }}>
                     Salvar
                   </Button>

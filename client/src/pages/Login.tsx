@@ -1,54 +1,36 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
-import { Lock, LogIn, ShieldAlert } from "lucide-react";
+import { Lock, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-
-// Initial mock users matching Admin.tsx
-const initialMockUsers = [
-  { id: "usr-1", name: "Admin", email: "edilson.ferreira@tjpe.jus.br", role: "admin", password: "MinhaSenha!@#" }
-];
-
-export const checkAuth = () => {
-  return localStorage.getItem("adminAuth") === "true";
-};
-
-export const logout = () => {
-  localStorage.removeItem("adminAuth");
-  localStorage.removeItem("adminRole");
-};
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { login } from "@/lib/api";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!localStorage.getItem("mock_users")) {
-      localStorage.setItem("mock_users", JSON.stringify(initialMockUsers));
-    }
-  }, []);
+  const loginMutation = useMutation({
+    mutationFn: () => login(email, password),
+    onSuccess: (user) => {
+      queryClient.setQueryData(["/api/auth/me"], user);
+      toast({ title: "Login realizado com sucesso", description: "Bem-vindo ao painel." });
+      setLocation("/admin/painel");
+    },
+    onError: () => {
+      toast({ title: "Credenciais inválidas", description: "E-mail ou senha incorretos.", variant: "destructive" });
+    },
+  });
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const storedUsers = localStorage.getItem("mock_users");
-    const users = storedUsers ? JSON.parse(storedUsers) : initialMockUsers;
-    
-    const user = users.find((u: any) => u.email === email && u.password === password);
-
-    if (user) {
-      localStorage.setItem("adminAuth", "true");
-      localStorage.setItem("adminRole", user.role);
-      toast({ title: "Login realizado com sucesso", description: "Bem-vindo ao painel." });
-      setLocation("/admin/painel");
-    } else {
-      toast({ title: "Credenciais inválidas", description: "E-mail ou senha incorretos.", variant: "destructive" });
-    }
+    loginMutation.mutate();
   };
 
   return (
@@ -74,23 +56,28 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                data-testid="input-email"
               />
             </div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Senha</Label>
-              </div>
+              <Label htmlFor="password">Senha</Label>
               <Input 
                 id="password" 
                 type="password" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                data-testid="input-password"
               />
             </div>
             
-            <Button type="submit" className="w-full mt-4 gap-2 text-base h-11">
-              <LogIn className="h-4 w-4" /> Entrar no Sistema
+            <Button 
+              type="submit" 
+              className="w-full mt-4 gap-2 text-base h-11"
+              disabled={loginMutation.isPending}
+              data-testid="button-login"
+            >
+              <LogIn className="h-4 w-4" /> {loginMutation.isPending ? "Entrando..." : "Entrar no Sistema"}
             </Button>
           </form>
         </CardContent>

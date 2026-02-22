@@ -6,6 +6,8 @@ import * as z from "zod";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, CheckCircle2, FileText, Scale, Info, Paperclip, X } from "lucide-react";
 import { IMaskInput } from "react-imask";
+import { useMutation } from "@tanstack/react-query";
+import { createPublicRequest } from "@/lib/api";
 
 import { Label } from "@/components/ui/label";
 
@@ -72,6 +74,7 @@ const formSchema = z.object({
 
 export default function Home() {
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [protocolId, setProtocolId] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
 
@@ -90,50 +93,45 @@ export default function Home() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    console.log(values);
-    // Simulate API delay
-    setTimeout(() => {
+  const submitMutation = useMutation({
+    mutationFn: (values: z.infer<typeof formSchema>) => {
+      const file = values.procuracao as File | null;
+      return createPublicRequest({
+        nomeCompleto: values.nomeCompleto,
+        cpf: values.cpf,
+        whatsapp: values.whatsapp,
+        email: values.email,
+        oab: values.oab || null,
+        tipoNumeracao: values.tipoNumeracao,
+        numeroProcesso: values.numeroProcesso,
+        partes: values.partes,
+        segredoJustica: values.segredoJustica,
+        observacao: values.observacao || null,
+        anexoName: file?.name || null,
+        anexoSize: file ? Math.ceil(file.size / 1024) : null,
+        anexoType: file?.type || null,
+      });
+    },
+    onSuccess: (data) => {
+      setProtocolId(data.protocolId);
       setIsSubmitted(true);
-      
-      // Store in localStorage to simulate sending to admin panel
-      try {
-        const stored = localStorage.getItem("mock_requests");
-        const parsed = stored ? JSON.parse(stored) : [];
-        const newReq = {
-          id: `AG-${Math.floor(100000 + Math.random() * 900000)}`,
-          createdAt: new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }),
-          status: "novo",
-          solicitante: {
-            nome: values.nomeCompleto,
-            cpf: values.cpf,
-            whatsapp: values.whatsapp,
-            email: values.email,
-            oab: values.oab,
-          },
-          processo: {
-            tipoNumeracao: values.tipoNumeracao,
-            numero: values.numeroProcesso,
-            partes: values.partes,
-            segredoJustica: values.segredoJustica,
-            observacao: values.observacao,
-          },
-          anexo: values.procuracao ? {
-            name: values.procuracao.name,
-            sizeKB: Math.ceil(values.procuracao.size / 1024),
-            type: values.procuracao.type,
-          } : undefined,
-          observacoes: []
-        };
-        localStorage.setItem("mock_requests", JSON.stringify([newReq, ...parsed]));
-      } catch (err) {}
-
       toast({
         title: "Solicitação Enviada",
-        description: "Seu pedido foi registrado com sucesso. Verifique seu e-mail.",
+        description: "Seu pedido foi registrado com sucesso.",
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
-    }, 1000);
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao enviar",
+        description: "Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  function onSubmit(values: z.infer<typeof formSchema>) {
+    submitMutation.mutate(values);
   }
 
   if (isSubmitted) {
@@ -158,7 +156,7 @@ export default function Home() {
               </CardHeader>
               <CardContent className="space-y-4 pt-4">
                 <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-600 space-y-2 border">
-                  <p><strong>Protocolo:</strong> #{Math.floor(Math.random() * 1000000)}</p>
+                  <p><strong>Protocolo:</strong> {protocolId}</p>
                   <p>Uma confirmação foi enviada para o e-mail cadastrado. O prazo médio de resposta é de 48 horas úteis.</p>
                 </div>
               </CardContent>
