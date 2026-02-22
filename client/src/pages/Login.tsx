@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Lock, LogIn, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 
-// Mock authentication logic
+// Initial mock users matching Admin.tsx
+const initialMockUsers = [
+  { id: "usr-1", name: "João Silva", email: "admin@tjpe.jus.br", role: "admin", password: "123" },
+  { id: "usr-2", name: "Ana Souza", email: "atendente@tjpe.jus.br", role: "atendente", password: "123" },
+];
+
 export const checkAuth = () => {
   return localStorage.getItem("adminAuth") === "true";
 };
@@ -23,22 +28,27 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
+  useEffect(() => {
+    if (!localStorage.getItem("mock_users")) {
+      localStorage.setItem("mock_users", JSON.stringify(initialMockUsers));
+    }
+  }, []);
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Simple mock validation
-    if (email === "admin@tjpe.jus.br" && password === "admin123") {
+    const storedUsers = localStorage.getItem("mock_users");
+    const users = storedUsers ? JSON.parse(storedUsers) : initialMockUsers;
+    
+    const user = users.find((u: any) => u.email === email && u.password === password);
+
+    if (user) {
       localStorage.setItem("adminAuth", "true");
-      localStorage.setItem("adminRole", "admin");
-      toast({ title: "Login realizado com sucesso", description: "Bem-vindo ao painel." });
-      setLocation("/admin/painel");
-    } else if (email === "atendente@tjpe.jus.br" && password === "atendente123") {
-      localStorage.setItem("adminAuth", "true");
-      localStorage.setItem("adminRole", "atendente");
+      localStorage.setItem("adminRole", user.role);
       toast({ title: "Login realizado com sucesso", description: "Bem-vindo ao painel." });
       setLocation("/admin/painel");
     } else {
-      toast({ title: "Credenciais inválidas", description: "Tente admin@tjpe.jus.br / admin123", variant: "destructive" });
+      toast({ title: "Credenciais inválidas", description: "E-mail ou senha incorretos.", variant: "destructive" });
     }
   };
 
@@ -85,8 +95,8 @@ export default function Login() {
               <div>
                 <p className="font-semibold mb-1">Credenciais de teste (Protótipo):</p>
                 <ul className="list-disc pl-4 space-y-1 text-xs">
-                  <li><strong>Admin:</strong> admin@tjpe.jus.br / admin123</li>
-                  <li><strong>Atendente:</strong> atendente@tjpe.jus.br / atendente123</li>
+                  <li><strong>Admin:</strong> admin@tjpe.jus.br / 123</li>
+                  <li><strong>Atendente:</strong> atendente@tjpe.jus.br / 123</li>
                 </ul>
               </div>
             </div>

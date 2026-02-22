@@ -85,6 +85,7 @@ type SystemUser = {
   name: string;
   email: string;
   role: UserRole;
+  password?: string;
 };
 
 const statusLabel: Record<RequestStatus, string> = {
@@ -192,9 +193,8 @@ const initialMockRequests: RequestItem[] = [
 ];
 
 const initialMockUsers: SystemUser[] = [
-  { id: "usr-1", name: "João Silva", email: "joao.silva@tjpe.jus.br", role: "admin" },
-  { id: "usr-2", name: "Ana Souza", email: "ana.souza@tjpe.jus.br", role: "atendente" },
-  { id: "usr-3", name: "Marcos Lima", email: "marcos.lima@tjpe.jus.br", role: "atendente" },
+  { id: "usr-1", name: "João Silva", email: "admin@tjpe.jus.br", role: "admin", password: "123" },
+  { id: "usr-2", name: "Ana Souza", email: "atendente@tjpe.jus.br", role: "atendente", password: "123" },
 ];
 
 export default function Admin() {
@@ -213,6 +213,23 @@ export default function Admin() {
 
   const [users, setUsers] = useState<SystemUser[]>(initialMockUsers);
   const [currentUser, setCurrentUser] = useState<SystemUser>(initialMockUsers[0]);
+
+  useEffect(() => {
+    try {
+      const storedUsers = localStorage.getItem("mock_users");
+      if (storedUsers) {
+        const parsed = JSON.parse(storedUsers);
+        setUsers(parsed);
+      } else {
+        localStorage.setItem("mock_users", JSON.stringify(initialMockUsers));
+      }
+    } catch (err) {}
+  }, []);
+
+  const updateUsers = (newUsers: SystemUser[]) => {
+    setUsers(newUsers);
+    localStorage.setItem("mock_users", JSON.stringify(newUsers));
+  };
 
   useEffect(() => {
     // Only check auth if we're in the browser environment
@@ -551,8 +568,9 @@ export default function Admin() {
                       <Button onClick={() => {
                         const name = prompt("Nome do usuário:");
                         const email = prompt("E-mail do usuário:");
-                        if (name && email) {
-                          setUsers([...users, { id: `usr-${Date.now()}`, name, email, role: "atendente" }]);
+                        const password = prompt("Senha do usuário:");
+                        if (name && email && password) {
+                          updateUsers([...users, { id: `usr-${Date.now()}`, name, email, password, role: "atendente" }]);
                           toast({ title: "Usuário adicionado" });
                         }
                       }}>
@@ -573,10 +591,24 @@ export default function Admin() {
                               <div className="text-sm text-slate-500">{u.email}</div>
                             </div>
                             <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const newName = prompt("Editar Nome:", u.name) || u.name;
+                                  const newEmail = prompt("Editar E-mail:", u.email) || u.email;
+                                  const newPass = prompt("Editar Senha (ou deixe vazio para manter):", "") || u.password;
+                                  
+                                  updateUsers(users.map(user => user.id === u.id ? { ...user, name: newName, email: newEmail, password: newPass } : user));
+                                  toast({ title: "Usuário atualizado" });
+                                }}
+                              >
+                                <Edit className="h-4 w-4 mr-1" /> Editar
+                              </Button>
                               <Select
                                 value={u.role}
                                 onValueChange={(val: UserRole) => {
-                                  setUsers(users.map(user => user.id === u.id ? { ...user, role: val } : user));
+                                  updateUsers(users.map(user => user.id === u.id ? { ...user, role: val } : user));
                                   if (currentUser.id === u.id) setCurrentUser({ ...currentUser, role: val });
                                   toast({ title: "Perfil atualizado" });
                                 }}
@@ -596,7 +628,7 @@ export default function Admin() {
                                 onClick={() => {
                                   if (users.length === 1) return alert("Não é possível remover o único usuário.");
                                   if (confirm("Remover usuário?")) {
-                                    setUsers(users.filter(user => user.id !== u.id));
+                                    updateUsers(users.filter(user => user.id !== u.id));
                                     toast({ title: "Usuário removido" });
                                   }
                                 }}
