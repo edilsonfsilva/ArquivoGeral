@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__MCP_DOCKER__firecrawl_scrape",
+      "Bash(node convert-to-js.mjs)",
+      "Bash(npm install --legacy-peer-deps)",
+      "Bash(node -e \":*)",
+      "Bash(/c/Users/edils/Downloads/ArquivoTJPE/TJPE-Archive-Assist/.claude/worktrees/keen-margulis/package.json:*)",
+      "Bash(grep -n 'from \"\"\\\\./' /c/Users/edils/Downloads/ArquivoTJPE/TJPE-Archive-Assist/.claude/worktrees/keen-margulis/server/*.js /c/Users/edils/Downloads/ArquivoTJPE/TJPE-Archive-Assist/.claude/worktrees/keen-margulis/shared/*.js)",
+      "Bash(npm run build)",
+      "Bash(docker compose up --build -d)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5000)"
+    ]
+  }
+}
