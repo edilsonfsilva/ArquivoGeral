@@ -148,16 +148,19 @@ async function registerRoutes(httpServer, app) {
   return httpServer;
 }
 async function seedDefaultAdmin() {
-  const existing = await storage.getUserByEmail("edilson.ferreira@tjpe.jus.br");
+  const adminEmail = process.env.ADMIN_EMAIL || "admin@tjpe.jus.br";
+  const adminName = process.env.ADMIN_NAME || "Administrador";
+  const adminPassword = process.env.ADMIN_PASSWORD || "Mudar@123";
+  const existing = await storage.getUserByEmail(adminEmail);
   if (!existing) {
-    const hashed = await bcrypt.hash("MinhaSenha!@#", 10);
+    const hashed = await bcrypt.hash(adminPassword, 10);
     await storage.createUser({
-      name: "Edilson Ferreira",
-      email: "edilson.ferreira@tjpe.jus.br",
+      name: adminName,
+      email: adminEmail,
       password: hashed,
       role: "admin"
     });
-    console.log("Admin padr\xE3o criado: edilson.ferreira@tjpe.jus.br");
+    console.log("Admin padr\xE3o criado: " + adminEmail);
   }
 }
 export {
