@@ -48,6 +48,8 @@ const formSchema = z.object({
   }),
   numeroProcesso: z.string().min(1, "N\xFAmero do processo \xE9 obrigat\xF3rio"),
   partes: z.string().min(3, "Informe as partes do processo"),
+  comarca: z.string().min(2, "Informe a comarca"),
+  varaUnidade: z.string().min(2, "Informe a vara ou unidade judici\xE1ria"),
   segredoJustica: z.enum(["sim", "nao"], {
     required_error: "Informe se h\xE1 segredo de justi\xE7a"
   }),
@@ -69,6 +71,8 @@ function Home() {
       procuracao: null,
       numeroProcesso: "",
       partes: "",
+      comarca: "",
+      varaUnidade: "",
       observacao: ""
     }
   });
@@ -84,6 +88,8 @@ function Home() {
         tipoNumeracao: values.tipoNumeracao,
         numeroProcesso: values.numeroProcesso,
         partes: values.partes,
+        comarca: values.comarca,
+        varaUnidade: values.varaUnidade,
         segredoJustica: values.segredoJustica,
         observacao: values.observacao || null,
         anexoName: file?.name || null,
@@ -457,6 +463,30 @@ function Home() {
                           <FormLabel>Partes (Autor / Réu)</FormLabel>
                           <FormControl>
                             <Input placeholder="Ex: João da Silva vs. Empresa X" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>}
+  />
+
+                    <FormField
+    control={form.control}
+    name="comarca"
+    render={({ field }) => <FormItem>
+                          <FormLabel>Comarca</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Ex: Recife, Caruaru, Petrolina..." {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>}
+  />
+
+                    <FormField
+    control={form.control}
+    name="varaUnidade"
+    render={({ field }) => <FormItem>
+                          <FormLabel>Vara / Unidade Judiciária</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Ex: 1ª Vara Cível, Vara da Família..." {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>}

@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS requests (
   tipo_numeracao TEXT NOT NULL,
   numero_processo TEXT NOT NULL,
   partes TEXT NOT NULL,
+  comarca TEXT NOT NULL DEFAULT '',
+  vara_unidade TEXT NOT NULL DEFAULT '',
   segredo_justica TEXT NOT NULL DEFAULT 'nao',
   observacao TEXT,
   anexo_name TEXT,

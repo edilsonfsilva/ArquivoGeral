@@ -20,6 +20,8 @@ const requests = pgTable("requests", {
   tipoNumeracao: text("tipo_numeracao").notNull(),
   numeroProcesso: text("numero_processo").notNull(),
   partes: text("partes").notNull(),
+  comarca: text("comarca").notNull(),
+  varaUnidade: text("vara_unidade").notNull(),
   segredoJustica: text("segredo_justica").notNull().default("nao"),
   observacao: text("observacao"),
   anexoName: text("anexo_name"),

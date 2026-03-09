@@ -242,7 +242,7 @@ function Admin() {
     }
   };
   const handleExport = () => {
-    const headers = ["ID", "Data", "Status", "Solicitante", "CPF", "E-mail", "WhatsApp", "Num. Processo", "Partes", "Segredo"];
+    const headers = ["ID", "Data", "Status", "Solicitante", "CPF", "E-mail", "WhatsApp", "Num. Processo", "Partes", "Comarca", "Vara/Unidade", "Segredo"];
     const csvContent = [
       headers.join(";"),
       ...filtered.map((r) => [
@@ -255,6 +255,8 @@ function Admin() {
         r.whatsapp,
         `"${r.numeroProcesso}"`,
         `"${r.partes}"`,
+        `"${r.comarca || ""}"`,
+        `"${r.varaUnidade || ""}"`,
         r.segredoJustica
       ].join(";"))
     ].join("\n");
@@ -682,6 +684,8 @@ function Admin() {
       tipoNumeracao: selected.tipoNumeracao,
       numeroProcesso: selected.numeroProcesso,
       partes: selected.partes,
+      comarca: selected.comarca,
+      varaUnidade: selected.varaUnidade,
       segredoJustica: selected.segredoJustica,
       observacao: selected.observacao
     });
@@ -771,6 +775,25 @@ function Admin() {
                               </div>}
                           </div>
                           
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <div className="text-xs text-slate-500">Comarca</div>
+                              {editingMode && editForm ? <Input
+    value={editForm.comarca || ""}
+    onChange={(e) => setEditForm({ ...editForm, comarca: e.target.value })}
+    className="h-8 text-sm"
+  /> : <div className="text-sm text-slate-900">{selected.comarca || <span className="text-slate-400 italic">Não informada</span>}</div>}
+                            </div>
+                            <div className="space-y-1.5">
+                              <div className="text-xs text-slate-500">Vara / Unidade Judiciária</div>
+                              {editingMode && editForm ? <Input
+    value={editForm.varaUnidade || ""}
+    onChange={(e) => setEditForm({ ...editForm, varaUnidade: e.target.value })}
+    className="h-8 text-sm"
+  /> : <div className="text-sm text-slate-900">{selected.varaUnidade || <span className="text-slate-400 italic">Não informada</span>}</div>}
+                            </div>
+                          </div>
+
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                               <div className="text-xs text-slate-500">Segredo de Justiça</div>
