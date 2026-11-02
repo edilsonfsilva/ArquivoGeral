@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, CheckCircle2, FileText, Scale, Info, Paperclip, X } from "lucide-react";
+import { Upload, CheckCircle2, FileText, Scale, Info, Paperclip, X, Copy } from "lucide-react";
 import { IMaskInput } from "react-imask";
 import { useMutation } from "@tanstack/react-query";
 import { createPublicRequest } from "@/lib/api";
@@ -25,36 +25,39 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-const MAX_FILE_MB = 5;
-const ACCEPTED_FILE_TYPES = ["application/pdf", "image/png", "image/jpeg"];
-const formSchema = z.object({
-  // Solicitante
-  cpf: z.string().min(11, "CPF inv\xE1lido").max(14, "CPF inv\xE1lido"),
-  nomeCompleto: z.string().min(3, "Nome completo \xE9 obrigat\xF3rio"),
-  whatsapp: z.string().min(10, "N\xFAmero de WhatsApp inv\xE1lido"),
-  email: z.string().email("E-mail inv\xE1lido"),
-  oab: z.string().optional(),
-  // Upload (frontend-only)
-  procuracao: z.custom().refine(
-    (file) => !file || ACCEPTED_FILE_TYPES.includes(file.type),
-    "Formato inv\xE1lido. Envie PDF, PNG ou JPG."
-  ).refine(
-    (file) => !file || file.size <= MAX_FILE_MB * 1024 * 1024,
-    `Arquivo muito grande. M\xE1ximo ${MAX_FILE_MB}MB.`
-  ).optional(),
-  // Processo
-  tipoNumeracao: z.enum(["npu", "tombo"], {
-    required_error: "Selecione o tipo de numera\xE7\xE3o"
-  }),
-  numeroProcesso: z.string().min(1, "N\xFAmero do processo \xE9 obrigat\xF3rio"),
-  partes: z.string().min(3, "Informe as partes do processo"),
-  comarca: z.string().min(2, "Informe a comarca"),
-  varaUnidade: z.string().min(2, "Informe a vara ou unidade judici\xE1ria"),
-  segredoJustica: z.enum(["sim", "nao"], {
-    required_error: "Informe se h\xE1 segredo de justi\xE7a"
-  }),
-  observacao: z.string().optional()
-});
+import {
+  ACCEPTED_FILE_TYPES,
+  MAX_FILE_BYTES,
+  MAX_FILE_MB,
+  isValidNpu,
+  requestFields
+} from "@shared/validation.js";
+const formSchema = z
+  .object({
+    ...requestFields,
+    oab: z.string().trim().max(30, "Máximo de 30 caracteres").optional(),
+    observacao: z.string().trim().max(2000, "Máximo de 2000 caracteres").optional(),
+    // Upload: validado aqui e de novo no servidor (tipo real do arquivo)
+    procuracao: z
+      .custom()
+      .refine((file) => !file || ACCEPTED_FILE_TYPES.includes(file.type), "Formato inválido. Envie PDF, PNG ou JPG.")
+      .refine((file) => !file || file.size <= MAX_FILE_BYTES, `Arquivo muito grande. Máximo ${MAX_FILE_MB}MB.`)
+      .optional()
+      .nullable()
+  })
+  .superRefine((data, ctx) => {
+    if (data.tipoNumeracao === "npu" && data.numeroProcesso && !isValidNpu(data.numeroProcesso)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["numeroProcesso"], message: "Número NPU inválido (dígito verificador não confere)" });
+    }
+  });
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = () => reject(new Error("Não foi possível ler o arquivo"));
+    reader.readAsDataURL(file);
+  });
+}
 function Home() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [protocolId, setProtocolId] = useState("");
@@ -77,8 +80,9 @@ function Home() {
     }
   });
   const submitMutation = useMutation({
-    mutationFn: (values) => {
+    mutationFn: async (values) => {
       const file = values.procuracao;
+      const anexo = file ? { name: file.name, type: file.type, base64: await readFileAsBase64(file) } : null;
       return createPublicRequest({
         nomeCompleto: values.nomeCompleto,
         cpf: values.cpf,
@@ -92,9 +96,7 @@ function Home() {
         varaUnidade: values.varaUnidade,
         segredoJustica: values.segredoJustica,
         observacao: values.observacao || null,
-        anexoName: file?.name || null,
-        anexoSize: file ? Math.ceil(file.size / 1024) : null,
-        anexoType: file?.type || null
+        anexo
       });
     },
     onSuccess: (data) => {
@@ -106,10 +108,15 @@ function Home() {
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
-    onError: () => {
+    onError: (err) => {
+      const body = String(err?.message || "").replace(/^d+:s*/, "");
+      let description = "Tente novamente em alguns instantes.";
+      try {
+        description = JSON.parse(body).message || description;
+      } catch {}
       toast({
         title: "Erro ao enviar",
-        description: "Tente novamente em alguns instantes.",
+        description,
         variant: "destructive"
       });
     }
@@ -139,7 +146,22 @@ function Home() {
               <CardContent className="space-y-4 pt-4">
                 <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-600 space-y-2 border">
                   <p><strong>Protocolo:</strong> {protocolId}</p>
-                  <p>Uma confirmação foi enviada para o e-mail cadastrado. O prazo médio de resposta é de 48 horas úteis.</p>
+                  <p><strong>Anote ou copie este número</strong>: ele identifica o seu pedido em qualquer contato com o Arquivo Geral. O prazo médio de resposta é de 48 horas úteis, pelo WhatsApp ou e-mail informados.</p>
+                  <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      className="gap-2"
+      onClick={() => {
+        navigator.clipboard?.writeText(protocolId).then(
+          () => toast({ title: "Protocolo copiado" }),
+          () => toast({ title: "Não foi possível copiar", description: "Anote o número exibido." })
+        );
+      }}
+      data-testid="button-copy-protocol"
+    >
+                    <Copy className="h-4 w-4" aria-hidden="true" /> Copiar protocolo
+                  </Button>
                 </div>
               </CardContent>
               <CardFooter>
@@ -198,7 +220,7 @@ function Home() {
     render={({ field }) => <FormItem className="col-span-1 md:col-span-2">
                           <FormLabel>Nome Completo</FormLabel>
                           <FormControl>
-                            <Input placeholder="Digite seu nome completo" {...field} />
+                            <Input placeholder="Digite seu nome completo" autoComplete="name" maxLength={150} {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>}
@@ -216,6 +238,7 @@ function Home() {
       unmask={false}
       onAccept={(value) => field.onChange(value)}
       placeholder="000.000.000-00"
+      inputMode="numeric"
       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
     />
                           </FormControl>
@@ -235,6 +258,8 @@ function Home() {
       unmask={false}
       onAccept={(value) => field.onChange(value)}
       placeholder="(00) 00000-0000"
+      autoComplete="tel-national"
+      inputMode="tel"
       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
     />
                           </FormControl>
@@ -248,7 +273,7 @@ function Home() {
     render={({ field }) => <FormItem className="col-span-1 md:col-span-2">
                           <FormLabel>E-mail</FormLabel>
                           <FormControl>
-                            <Input placeholder="seu@email.com" type="email" {...field} />
+                            <Input placeholder="seu@email.com" type="email" autoComplete="email" maxLength={254} {...field} />
                           </FormControl>
                           <FormDescription>
                             Para onde enviaremos as atualizações do pedido.

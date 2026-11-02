@@ -55,6 +55,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { queryClient } from "@/lib/queryClient";
+import { csvCell } from "@shared/validation.js";
 import {
   getRequests,
   updateRequest,
@@ -105,7 +106,7 @@ function Admin() {
       setLocation("/admin");
     }
   }, [userError, setLocation]);
-  const { data: requests = [], isLoading: requestsLoading } = useQuery({
+  const { data: requests = [], isLoading: requestsLoading, isError: requestsError, refetch: refetchRequests } = useQuery({
     queryKey: ["/api/requests"],
     queryFn: getRequests,
     enabled: !!currentUser
@@ -243,23 +244,23 @@ function Admin() {
   };
   const handleExport = () => {
     const headers = ["ID", "Data", "Status", "Solicitante", "CPF", "E-mail", "WhatsApp", "Num. Processo", "Partes", "Comarca", "Vara/Unidade", "Segredo"];
-    const csvContent = [
-      headers.join(";"),
+    const csvContent = "\uFEFF" + [
+      headers.map(csvCell).join(";"),
       ...filtered.map((r) => [
         r.protocolId,
-        r.createdAt,
-        r.status,
-        `"${r.nomeCompleto}"`,
+        new Date(r.createdAt).toLocaleString("pt-BR"),
+        statusLabel[r.status] || r.status,
+        r.nomeCompleto,
         r.cpf,
         r.email,
         r.whatsapp,
-        `"${r.numeroProcesso}"`,
-        `"${r.partes}"`,
-        `"${r.comarca || ""}"`,
-        `"${r.varaUnidade || ""}"`,
+        r.numeroProcesso,
+        r.partes,
+        r.comarca || "",
+        r.varaUnidade || "",
         r.segredoJustica
-      ].join(";"))
-    ].join("\n");
+      ].map(csvCell).join(";"))
+    ].join("\r\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -435,8 +436,17 @@ function Admin() {
                     <div className="divide-y border rounded-md">
                       {filtered.map((r) => <div
     key={r.id}
-    className="w-full text-left p-4 hover:bg-slate-50 transition-colors bg-white first:rounded-t-md last:rounded-b-md cursor-pointer"
+    className="w-full text-left p-4 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary transition-colors bg-white first:rounded-t-md last:rounded-b-md cursor-pointer"
+    role="button"
+    tabIndex={0}
+    aria-label={`Abrir solicitação ${r.protocolId}`}
     onClick={() => setSelected(r)}
+    onKeyDown={(e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setSelected(r);
+      }
+    }}
   >
                           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                             <div className="space-y-1.5 min-w-0">
@@ -475,8 +485,12 @@ function Admin() {
                           </div>
                         </div>)}
 
-                      {filtered.length === 0 && <div className="p-12 text-center text-slate-500">
-                          Nenhuma solicitação corresponde aos filtros.
+                      {requestsError && <div role="alert" className="p-12 text-center text-rose-700">
+                          Não foi possível carregar as solicitações.{" "}
+                          <Button variant="link" className="px-1" onClick={() => refetchRequests()}>Tentar novamente</Button>
+                        </div>}
+                      {!requestsError && filtered.length === 0 && <div className="p-12 text-center text-slate-500">
+                          {requestsLoading ? "Carregando solicitações..." : "Nenhuma solicitação corresponde aos filtros."}
                         </div>}
                     </div>
                   </CardContent>
@@ -593,8 +607,8 @@ function Admin() {
                             <div>
                               <div className="font-medium text-slate-900 flex items-center gap-2">
                                 {u.name}
-                                {u.role === "admin" && <Badge variant="default" className="text-[10px] h-5">Admin</Badge>}
-                                {u.role === "atendente" && <Badge variant="secondary" className="text-[10px] h-5">Atendente</Badge>}
+                                {u.role === "admin" && <Badge variant="default" className="text-xs h-5">Admin</Badge>}
+                                {u.role === "atendente" && <Badge variant="secondary" className="text-xs h-5">Atendente</Badge>}
                               </div>
                               <div className="text-sm text-slate-500">{u.email}</div>
                             </div>
@@ -635,6 +649,7 @@ function Admin() {
     variant="outline"
     size="icon"
     className="h-9 w-9 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+    aria-label={`Remover usuário ${u.name}`}
     onClick={() => {
       if (users.length === 1) return alert("N\xE3o \xE9 poss\xEDvel remover o \xFAnico usu\xE1rio.");
       if (confirm("Remover usu\xE1rio?")) {
@@ -733,6 +748,7 @@ function Admin() {
     className="h-6 w-6"
     onClick={() => copyToClipboard(selected.numeroProcesso, "N\xFAmero")}
     title="Copiar número"
+    aria-label="Copiar número"
   >
                                     <Copy className="h-3.5 w-3.5 text-slate-400" />
                                   </Button>
@@ -769,6 +785,7 @@ function Admin() {
     className="h-6 w-6"
     onClick={() => copyToClipboard(selected.partes, "Partes")}
     title="Copiar partes"
+    aria-label="Copiar partes"
   >
                                   <Copy className="h-3.5 w-3.5 text-slate-400" />
                                 </Button>
@@ -854,6 +871,8 @@ function Admin() {
     size="icon"
     className="h-6 w-6"
     onClick={() => copyToClipboard(selected.cpf, "CPF")}
+    title="Copiar CPF"
+    aria-label="Copiar CPF"
   >
                                   <Copy className="h-3.5 w-3.5 text-slate-400" />
                                 </Button>
@@ -910,15 +929,14 @@ function Admin() {
                                 </div>
                               </div>
                               <Button
-    type="button"
     variant="outline"
     className="gap-2 shrink-0"
-    onClick={() => {
-      toast({ title: "Download iniciado", description: "O arquivo est\xE1 sendo baixado." });
-    }}
+    asChild
   >
-                                <Download className="h-4 w-4" />
+                                <a href={`/api/requests/${selected.id}/anexo`} download={selected.anexoName || "anexo"}>
+                                <Download className="h-4 w-4" aria-hidden="true" />
                                 Baixar
+                                </a>
                               </Button>
                             </div> : <div className="text-sm text-slate-500 italic p-2 bg-slate-50 rounded-md text-center border border-dashed">
                               Nenhum anexo foi enviado nesta solicitação.
@@ -971,7 +989,7 @@ function Admin() {
     /* Status Change Actions */
   }
                       <div className="rounded-lg border bg-slate-900 text-white shadow-sm p-5">
-                        <h3 className="text-sm font-medium mb-4 text-slate-300">Ações de Mudança de Status</h3>
+                        <h2 className="text-sm font-medium mb-4 text-slate-300">Ações de Mudança de Status</h2>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                           <Button
     variant={selected.status === "novo" ? "secondary" : "outline"}

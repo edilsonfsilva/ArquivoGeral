@@ -33,7 +33,7 @@ function Login() {
       <Card className="w-full max-w-md border-t-4 border-t-primary shadow-lg">
         <CardHeader className="space-y-3 pb-6 text-center">
           <div className="mx-auto bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mb-2">
-            <Lock className="h-8 w-8 text-primary" />
+            <Lock className="h-8 w-8 text-primary" aria-hidden="true" />
           </div>
           <CardTitle className="text-2xl font-serif text-slate-900">Acesso Restrito</CardTitle>
           <CardDescription className="text-base">
@@ -47,6 +47,7 @@ function Login() {
               <Input
     id="email"
     type="email"
+    autoComplete="username"
     placeholder="nome@tjpe.jus.br"
     value={email}
     onChange={(e) => setEmail(e.target.value)}
@@ -59,6 +60,7 @@ function Login() {
               <Input
     id="password"
     type="password"
+    autoComplete="current-password"
     value={password}
     onChange={(e) => setPassword(e.target.value)}
     required

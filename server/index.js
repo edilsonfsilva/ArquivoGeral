@@ -1,76 +1,98 @@
 import express from "express";
+import helmet from "helmet";
 import { registerRoutes } from "./routes.js";
 import { serveStatic } from "./static.js";
+import { ensureSchema } from "./db.js";
 import { createServer } from "http";
+
 const app = express();
 const httpServer = createServer(app);
+const isProd = process.env.NODE_ENV === "production";
+
+app.disable("x-powered-by");
+// Atrás do proxy (Traefik/Nginx): IP real do cliente e cookie Secure funcionam.
+app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
+
 app.use(
-  express.json({
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    }
+  helmet({
+    contentSecurityPolicy: isProd
+      ? {
+          useDefaults: false,
+          directives: {
+            "default-src": ["'self'"],
+            "base-uri": ["'self'"],
+            "object-src": ["'none'"],
+            "frame-ancestors": ["'none'"],
+            "form-action": ["'self'"],
+            "script-src": ["'self'"],
+            "style-src": ["'self'", "https://fonts.googleapis.com"],
+            "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
+            "img-src": ["'self'", "data:", "blob:"],
+            "connect-src": ["'self'"],
+            "manifest-src": ["'self'"],
+            "upgrade-insecure-requests": []
+          }
+        }
+      : false,
+    strictTransportSecurity: isProd ? { maxAge: 31536000, includeSubDomains: true } : false,
+    crossOriginEmbedderPolicy: false,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" }
   })
 );
-app.use(express.urlencoded({ extended: false }));
+
+// Corpo JSON: 8 MB só no envio público (anexo em base64); 100 KB no resto.
+const jsonSmall = express.json({ limit: "100kb" });
+const jsonLarge = express.json({ limit: "8mb" });
+app.use((req, res, next) =>
+  req.method === "POST" && req.path === "/api/requests" ? jsonLarge(req, res, next) : jsonSmall(req, res, next)
+);
+app.use(express.urlencoded({ extended: false, limit: "100kb" }));
+
 function log(message, source = "express") {
-  const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true
-  });
+  const formattedTime = new Date().toLocaleTimeString("pt-BR", { hour12: false });
   console.log(`${formattedTime} [${source}] ${message}`);
 }
+
+// Log de acesso SEM corpo de resposta (não grava CPF, e-mail, telefone etc.).
 app.use((req, res, next) => {
   const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse = void 0;
-  const originalResJson = res.json;
-  res.json = function(bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
   res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-      log(logLine);
+    if (req.path.startsWith("/api")) {
+      log(`${req.method} ${req.path} ${res.statusCode} in ${Date.now() - start}ms`);
     }
   });
   next();
 });
+
 (async () => {
+  await ensureSchema();
   await registerRoutes(httpServer, app);
+
   app.use((err, _req, res, next) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-    console.error("Internal Server Error:", err);
-    if (res.headersSent) {
-      return next(err);
+    console.error("Erro:", status, err?.type || err?.code || "", err?.message);
+    if (res.headersSent) return next(err);
+    if (status === 413) return res.status(413).json({ message: "Conteúdo muito grande" });
+    if (status >= 400 && status < 500 && err.expose) {
+      return res.status(status).json({ message: "Requisição inválida" });
     }
-    return res.status(status).json({ message });
+    return res.status(500).json({ message: "Erro interno. Tente novamente." });
   });
-  if (process.env.NODE_ENV === "production") {
+
+  if (isProd) {
     serveStatic(app);
   } else {
-    const { setupVite } = await import("./vite");
+    const { setupVite } = await import("./vite.js");
     await setupVite(httpServer, app);
   }
+
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true
-    },
-    () => {
-      log(`serving on port ${port}`);
-    }
-  );
-})();
-export {
-  log
-};
+  httpServer.listen({ port, host: "0.0.0.0" }, () => {
+    log(`serving on port ${port}`);
+  });
+})().catch((err) => {
+  console.error("Falha ao iniciar:", err?.message || err);
+  process.exit(1);
+});
+
+export { log };

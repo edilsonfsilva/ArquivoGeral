@@ -27,9 +27,11 @@ const requests = pgTable("requests", {
   anexoName: text("anexo_name"),
   anexoSize: integer("anexo_size"),
   anexoType: text("anexo_type"),
+  // Conteúdo do anexo em base64 (máx. 5 MB). Nunca é devolvido nas listagens.
+  anexoData: text("anexo_data"),
   createdAt: timestamp("created_at").notNull().defaultNow()
 });
-const insertRequestSchema = createInsertSchema(requests).omit({ id: true, protocolId: true, createdAt: true, status: true });
+const insertRequestSchema = createInsertSchema(requests).omit({ id: true, protocolId: true, createdAt: true, status: true, anexoData: true });
 const observations = pgTable("observations", {
   id: serial("id").primaryKey(),
   requestId: integer("request_id").notNull(),
