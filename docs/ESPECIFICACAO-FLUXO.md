@@ -71,11 +71,12 @@ A tabela de transições existe em um único arquivo (`shared/workflow.js`), usa
 | Localizado / não localizado / arquivado | – | – | – | só os seus | ✔ | ✔ | – |
 | Nova busca de processo não localizado | ✔ | ✔ | ✔ | só os seus | ✔ | ✔ | – |
 | Cadastrar e desativar usuários | – | – | do Atend. | – | – | da Busca | chefes; desativa todos |
-| Indicadores | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ (com solicitantes) |
+| Indicadores | ✔ | ✔ | ✔ | – | ✔ | ✔ | ✔ (com solicitantes) |
+| Ver selo de prazo de devolução vencido | ✔ | ✔ | ✔ | – | – | – | ✔ |
 
 Regras complementares:
 - **Prazo de devolução (Q7):** o processo tem **1 dia** para voltar ao arquivo, contado de quando fica disponível no Atendimento. Vencido o prazo (situações "disponível" ou "com a parte"), o pedido recebe o selo **"Prazo de devolução vencido"**, entra na aba **"Prazo vencido"** e o **servidor e o chefe do Atendimento** veem um **alerta** no topo da tela. O alerta some quando o processo é enviado para rearquivamento. No protótipo o aviso é só dentro do sistema; o prazo é configurável (`PRAZO_DEVOLUCAO_HORAS`, padrão 24).
-- **Segredo de justiça (Q9):** só **advogado habilitado nos autos** ou quem tem **procuração das partes** pode ter acesso ao processo. O formulário exige a OAB ou a procuração anexada; na **triagem** e na **entrega** o Atendimento precisa marcar a confirmação de habilitação/procuração, que fica registrada na linha do tempo.
+- **Segredo de justiça (Q9):** só **advogado habilitado nos autos** ou quem tem **procuração das partes** pode ter acesso ao processo. O formulário exige a OAB (formato UF + número) ou a procuração anexada. Na **triagem**, o Atendimento **classifica** se o processo está em segredo — a declaração do solicitante vem preenchida, mas é o Atendimento quem decide, e uma reclassificação fica registrada. Se for segredo, a **triagem** e a **entrega** exigem marcar a confirmação de habilitação/procuração, também registrada na linha do tempo.
 - **Minimização de dados (LGPD):** a Busca nunca recebe CPF, e-mail, WhatsApp, OAB nem a procuração. A Busca também não vê pedidos ainda em triagem ou indeferidos.
 - Usuários são **desativados, não excluídos**, para manter o histórico de quem fez o quê. A desativação derruba a sessão imediatamente.
 - Ninguém desativa o próprio usuário; é preciso manter ao menos um Gerente ativo.
@@ -96,6 +97,7 @@ O detalhe do pedido mostra o **próximo passo** (apenas as ações permitidas ao
 
 ![Detalhe do pedido](telas/02-detalhe.png)
 ![Alerta de prazo de devolução vencido](telas/13-alerta-prazo.png)
+![Classificação de segredo de justiça na triagem](telas/16-triagem-classificacao.png)
 ![Confirmação de habilitação em processo sob segredo de justiça](telas/15-segredo-confirmacao.png)
 
 ### 3.3 Busca e Desarquivamento (`/busca`)
@@ -159,11 +161,20 @@ Cada certidão tem número sequencial (`CERT-AAAA-NNNNNN`), código de verifica�
 | Q6 | Quando o processo não é localizado, há nova tentativa de busca? | **Definido (02/11/2026):** sim, sem limite de tentativas; a Busca pode fazer e o Atendimento pode solicitar nova busca, até o pedido ser encerrado. |
 | Q7 | Se a parte não comparece, qual o prazo para devolver o processo ao arquivo? | **Definido:** 1 dia; vencido, alerta para o servidor e o chefe do Atendimento. *A validar:* dia corrido (24 h, como no protótipo) ou dia útil; alerta também por e-mail. |
 | Q8 | O texto das três certidões está adequado? Faltam tipos (ex.: certidão narrativa)? | **Definido:** os modelos devem ser personalizáveis (feito: chefe do Atendimento e Gerente editam). *A validar:* se é preciso criar novos tipos de certidão além dos três. |
-| Q9 | Processos em segredo de justiça exigem regra extra (ex.: só advogado habilitado)? | **Definido:** só advogado habilitado ou com procuração das partes. Formulário exige OAB ou procuração; triagem e entrega exigem confirmação. |
+| Q9 | Processos em segredo de justiça exigem regra extra (ex.: só advogado habilitado)? | **Definido:** só advogado habilitado ou com procuração das partes. Formulário exige OAB ou procuração; o Atendimento classifica o segredo na triagem; triagem e entrega exigem confirmação. |
 | Q10 | Quais indicadores a Gerência precisa acompanhar periodicamente? | Os listados em 3.4. |
 
-## 7. Referências técnicas do protótipo
+## 7. Segurança (protótipo)
 
-- Regras do fluxo e permissões: `shared/workflow.js` (com 1.071 testes automatizados (regras e validações) perfil × ação × etapa em `tests/workflow.test.js`).
+Revisões feitas com o método ECC (`security-reviewer` + `code-reviewer`), a última em 02/11/2026, sem achados críticos ou altos em aberto. Pontos que o sistema definitivo deve manter:
+- Autorização sempre no servidor, por perfil e por etapa (a interface só esconde botões); escopo de dados por perfil (a Busca não recebe dados pessoais do solicitante).
+- Segredo de justiça classificado por servidor, não apenas pela declaração do solicitante.
+- Sessão regenerada no login, cookie `HttpOnly`/`Secure`/`SameSite=Strict`, usuário recarregado do banco a cada requisição (desativação e troca de senha valem na hora), limite de tentativas de login e nos formulários públicos.
+- Validação de todas as entradas no servidor (zod 4), SQL parametrizado, tipo real do anexo conferido pelo conteúdo, exportação CSV protegida contra fórmulas, CSP restritiva para scripts.
+- Dependências de produção sem vulnerabilidades conhecidas (`npm audit --omit=dev`).
+
+## 8. Referências técnicas do protótipo
+
+- Regras do fluxo e permissões: `shared/workflow.js` (1.079 testes automatizados de regras e validações em `tests/`).
 - API: `server/routes.js` (rotas e escopo por perfil) e `server/storage.js` (SQL, transações e trilha).
-- Teste de ponta a ponta da API em `tests/e2e/` (cerca de 100 verificações — 102 com prazo curto de teste, 101 com o prazo real: ciclo completo, prazo de devolução e alertas, segredo de justiça, modelos de certidão, não localização com novas buscas, indeferimento, permissões negadas, concorrência, consulta pública, gestão de usuários) e regressão da auditoria (31 verificações).
+- Teste de ponta a ponta da API em `tests/e2e/` (cerca de 105 verificações — 107 com prazo curto de teste, 106 com o prazo real: ciclo completo, prazo de devolução e alertas, segredo de justiça, modelos de certidão, não localização com novas buscas, indeferimento, permissões negadas, concorrência, consulta pública, gestão de usuários) e regressão da auditoria (31 verificações).

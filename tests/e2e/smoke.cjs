@@ -115,7 +115,7 @@ const pedido = {
 
   const p1 = await call("PATCH", `/api/requests/${meu?.id}`, { cookie: atc, body: { cpf: "000.000.000-00" } });
   ok(p1.res.status === 404, "Edição direta do pedido não existe (só ações do fluxo)");
-  const p2 = await call("POST", `/api/requests/${meu?.id}/acoes`, { cookie: atc, body: { acao: "encaminhar_busca" } });
+  const p2 = await call("POST", `/api/requests/${meu?.id}/acoes`, { cookie: atc, body: { acao: "encaminhar_busca", segredoJustica: "nao" } });
   ok(p2.res.status === 200 && p2.json?.status === "aguardando_busca", "Operador executa ação do fluxo = 200");
   const d1 = await call("DELETE", `/api/requests/${meu?.id}`, { cookie: atc });
   ok(d1.res.status === 403, "Atendente excluir pedido = 403 (bloqueado)");

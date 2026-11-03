@@ -60,7 +60,7 @@ const pedidoBase = (cpf) => ({
   ok((await acao("chefe_busca", A.id, { acao: "atribuir_busca", responsavelId: idOp })).status === 404, "Busca não age em pedido fora do seu escopo");
   ok((await acao("operador_atendimento", A.id, { acao: "receber" })).status === 409, "Pular etapa (receber na triagem) = 409");
 
-  let r = await acao("operador_atendimento", A.id, { acao: "encaminhar_busca" });
+  let r = await acao("operador_atendimento", A.id, { acao: "encaminhar_busca", segredoJustica: "nao" });
   ok(r.status === 200 && r.json.status === "aguardando_busca", "Atendimento encaminha à Busca", r.json?.message);
 
   const listaBusca = await call("GET", "/api/requests", { cookie: ck("chefe_busca") });
@@ -181,7 +181,7 @@ const pedidoBase = (cpf) => ({
 
   // ================= Não localizado =================
   const B = await novoPedido();
-  await acao("operador_atendimento", B.id, { acao: "encaminhar_busca" });
+  await acao("operador_atendimento", B.id, { acao: "encaminhar_busca", segredoJustica: "nao" });
   await acao("chefe_busca", B.id, { acao: "atribuir_busca", responsavelId: idOp2 });
   ok((await acao("operador_busca_2", B.id, { acao: "nao_localizar" })).status === 400, "Não localizado sem motivo = 400");
   r = await acao("operador_busca_2", B.id, { acao: "nao_localizar", nota: "Caixa indicada no índice está vazia" });
@@ -215,7 +215,14 @@ const pedidoBase = (cpf) => ({
   criados.push(S9?.id);
   const s9a = await acao("operador_atendimento", S9?.id, { acao: "encaminhar_busca" });
   ok(s9a.status === 400 && /segredo de justiça/i.test(s9a.json?.message || ""), "Triagem de segredo exige confirmar habilitação/procuração");
-  ok((await acao("operador_atendimento", S9?.id, { acao: "encaminhar_busca", confirmaHabilitacao: true })).status === 200, "Com a confirmação, encaminha");
+  ok(
+    (await acao("operador_atendimento", S9?.id, { acao: "encaminhar_busca", segredoJustica: "sim" })).status === 400,
+    "Classificado como segredo, ainda exige confirmar habilitação"
+  );
+  ok(
+    (await acao("operador_atendimento", S9?.id, { acao: "encaminhar_busca", segredoJustica: "sim", confirmaHabilitacao: true })).status === 200,
+    "Com a classificação e a confirmação, encaminha"
+  );
   await acao("servidor_busca", S9?.id, { acao: "atribuir_busca", responsavelId: idOp });
   await acao("operador_busca", S9?.id, { acao: "localizar" });
   await acao("operador_atendimento", S9?.id, { acao: "receber" });
@@ -223,6 +230,21 @@ const pedidoBase = (cpf) => ({
   ok((await acao("operador_atendimento", S9?.id, { acao: "entregar_parte", confirmaHabilitacao: true })).status === 200, "Com a confirmação, entrega à parte");
   const tl9 = (await detalhe("operador_atendimento", S9?.id)).json?.timeline || [];
   ok(tl9.filter((e) => /habilitação\/procuração conferida/.test(e.nota || "")).length === 2, "Trilha registra as duas conferências de habilitação");
+
+  // Solicitante declarou "não", mas o Atendimento reclassifica como segredo (revisão de segurança).
+  const decl = await call("POST", "/api/requests", { body: { ...pedidoBase(cpfFicticio()), segredoJustica: "nao" } });
+  const S10 = (await call("GET", `/api/requests?q=${decl.json?.protocolId}`, { cookie: ck("operador_atendimento") })).json?.[0];
+  criados.push(S10?.id);
+  ok(
+    (await acao("operador_atendimento", S10?.id, { acao: "encaminhar_busca", segredoJustica: "sim" })).status === 400,
+    "Atendimento reclassifica como segredo: exige confirmar habilitação"
+  );
+  ok(
+    (await acao("operador_atendimento", S10?.id, { acao: "encaminhar_busca", segredoJustica: "sim", confirmaHabilitacao: true })).status === 200,
+    "Reclassificado e conferido, encaminha"
+  );
+  const d10 = (await detalhe("operador_atendimento", S10?.id)).json;
+  ok(d10?.segredoJustica === "sim" && d10?.timeline?.some((e) => /reclassificado/.test(e.nota || "")), "Reclassificação gravada no pedido e na trilha");
 
   // ================= Indeferimento =================
   const C = await novoPedido();
@@ -246,7 +268,9 @@ const pedidoBase = (cpf) => ({
   const relBusca = await call("GET", "/api/relatorios", { cookie: ck("chefe_busca") });
   ok(relBusca.json?.solicitantes?.length === 0, "Relatório da Busca sem dados de solicitantes");
   const relOp = await call("GET", "/api/relatorios", { cookie: ck("operador_busca") });
-  ok(relOp.json?.porOperador?.length === 0, "Operador não vê a atuação dos colegas");
+  ok(relOp.status === 403, "Operador da Busca não acessa indicadores globais");
+  const listaBuscaPrazo = (await call("GET", "/api/requests", { cookie: ck("chefe_busca") })).json || [];
+  ok(listaBuscaPrazo.every((x) => !("prazoVencido" in x) && !("disponivelEm" in x)), "Busca não recebe o selo nem a data do prazo de devolução");
 
   // ================= Usuários por setor =================
   const novo = (role) => ({ name: "Teste E2E", email: `e2e.${role}.${Date.now()}@example.com`, matricula: "999", password: senhaForte(), role });

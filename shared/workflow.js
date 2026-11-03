@@ -54,7 +54,15 @@ export const STATUS_KEYS = Object.keys(STATUS);
 // exige: dados obrigatórios · responsavel: campo do pedido que restringe o operador da Busca.
 export const ACOES = {
   // segredo: em processo sob segredo de justiça, exige confirmar habilitação/procuração (Q9).
-  encaminhar_busca: { label: "Encaminhar para a Busca", de: ["solicitado"], para: "aguardando_busca", perfis: ATEND, exige: [], segredo: true },
+  // Na triagem o Atendimento classifica o segredo de justiça (não vale só a declaração do solicitante).
+  encaminhar_busca: {
+    label: "Encaminhar para a Busca",
+    de: ["solicitado"],
+    para: "aguardando_busca",
+    perfis: ATEND,
+    exige: ["segredoJustica"],
+    segredo: true
+  },
   indeferir: { label: "Indeferir", de: ["solicitado"], para: "indeferido", perfis: ATEND, exige: ["nota"], perigo: true },
   atribuir_busca: {
     label: "Atribuir responsável pela busca",
@@ -122,10 +130,15 @@ export const ACAO_KEYS = Object.keys(ACOES);
 const MSG_EXIGE = {
   nota: "Informe o motivo",
   responsavelId: "Selecione o responsável",
-  localizacao: "Informe a localização física (estante/caixa)"
+  localizacao: "Informe a localização física (estante/caixa)",
+  segredoJustica: "Informe se o processo está em segredo de justiça"
 };
 export const MSG_SEGREDO =
   "Processo em segredo de justiça: confirme que o solicitante é advogado habilitado nos autos ou tem procuração das partes";
+
+/** Segredo de justiça efetivo: a classificação do Atendimento (na ação) prevalece sobre a do solicitante. */
+export const classificacaoSegredo = (pedido, dados) =>
+  dados?.segredoJustica === "sim" || dados?.segredoJustica === "nao" ? dados.segredoJustica : pedido?.segredoJustica;
 
 /** Devolve null se a ação é permitida, ou a mensagem do impedimento. */
 export function verificarAcao(role, acaoKey, pedido, userId, dados = {}) {
@@ -140,7 +153,7 @@ export function verificarAcao(role, acaoKey, pedido, userId, dados = {}) {
     const v = dados?.[campo];
     if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) return MSG_EXIGE[campo];
   }
-  if (acao.segredo && pedido.segredoJustica === "sim" && dados?.confirmaHabilitacao !== true) return MSG_SEGREDO;
+  if (acao.segredo && classificacaoSegredo(pedido, dados) === "sim" && dados?.confirmaHabilitacao !== true) return MSG_SEGREDO;
   return null;
 }
 
@@ -216,7 +229,8 @@ export const CAMPOS_MODELO = {
 };
 export function renderModelo(texto, dados) {
   return String(texto || "").replace(/\{(\w+)\}/g, (m, campo) => {
-    const def = CAMPOS_MODELO[campo];
+    // Só campos próprios (evita nomes herdados como {constructor} ou {toString}).
+    const def = Object.hasOwn(CAMPOS_MODELO, campo) ? CAMPOS_MODELO[campo] : undefined;
     const v = def ? def.de(dados || {}) : undefined;
     return v == null || v === "" ? (def ? "—" : m) : String(v);
   });
@@ -230,6 +244,10 @@ export function prazoVencido(pedido, horas = PRAZO_DEVOLUCAO_HORAS_PADRAO, agora
   if (!pedido?.disponivelEm || !STATUS_FORA_DO_ARQUIVO.includes(pedido.status)) return false;
   return agora.getTime() - new Date(pedido.disponivelEm).getTime() > horas * 3600_000;
 }
+// Selo de prazo vencido: Atendimento e Gerência (a Busca não precisa da informação).
+export const vePrazo = (role) => role === "gerente_arquivo" || ATEND.includes(role);
+// Indicadores globais: todos, exceto o operador da Busca (que só vê as próprias tarefas).
+export const veIndicadores = (role) => !!ROLES[role] && role !== "operador_busca";
 export const veAlertasPrazo = (role) => role === "servidor_atendimento" || role === "chefe_atendimento";
 
 export const podeEmitirCertidao = (role) => role === "servidor_atendimento" || role === "chefe_atendimento";

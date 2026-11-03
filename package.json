@@ -12,7 +12,7 @@
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {
-    "@hookform/resolvers": "^3.10.0",
+    "@hookform/resolvers": "^5.9.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",
@@ -48,7 +48,7 @@
     "connect-pg-simple": "^10.0.0",
     "date-fns": "^3.6.0",
     "drizzle-orm": "^0.45.4",
-    "drizzle-zod": "^0.7.0",
+    "drizzle-zod": "^0.8.3",
     "embla-carousel-react": "^8.6.0",
     "express": "^5.0.1",
     "express-rate-limit": "^8.7.3",
@@ -74,7 +74,7 @@
     "vaul": "^1.1.2",
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.14",

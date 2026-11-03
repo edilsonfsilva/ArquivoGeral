@@ -21,12 +21,16 @@ export function AcaoDialog({ pedido, acao, onClose }) {
   const [localizacao, setLocalizacao] = useState("");
   const [responsavelId, setResponsavelId] = useState("");
   const [confirma, setConfirma] = useState(false);
-  const pedeSegredo = !!def?.segredo && pedido?.segredoJustica === "sim";
+  const classifica = acao === "encaminhar_busca";
+  const [segredo, setSegredo] = useState("");
+  const segredoEfetivo = classifica ? segredo : pedido?.segredoJustica;
+  const pedeSegredo = !!def?.segredo && segredoEfetivo === "sim";
 
   useEffect(() => {
     if (!acao) return;
     setNota("");
     setConfirma(false);
+    setSegredo(pedido?.segredoJustica === "sim" ? "sim" : "nao");
     setLocalizacao(pedido?.localizacaoFisica || "");
   }, [acao, pedido]);
 
@@ -51,7 +55,8 @@ export function AcaoDialog({ pedido, acao, onClose }) {
         nota: nota || null,
         localizacao: pedeLocal ? localizacao || null : null,
         responsavelId: pedeResponsavel && responsavelId ? Number(responsavelId) : null,
-        confirmaHabilitacao: pedeSegredo ? confirma : undefined
+        confirmaHabilitacao: pedeSegredo ? confirma : undefined,
+        segredoJustica: classifica ? segredo : undefined
       }),
     onSuccess: (r) => {
       queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
@@ -67,6 +72,7 @@ export function AcaoDialog({ pedido, acao, onClose }) {
     (exige("nota") && !nota.trim()) ||
     (pedeResponsavel && !responsavelId) ||
     (exige("localizacao") && !localizacao.trim()) ||
+    (classifica && !segredo) ||
     (pedeSegredo && !confirma);
 
   return (
@@ -85,6 +91,25 @@ export function AcaoDialog({ pedido, acao, onClose }) {
             if (!faltando) enviar.mutate();
           }}
         >
+          {classifica && (
+            <fieldset className="space-y-1">
+              <legend className="text-sm font-medium">O processo está em segredo de justiça?</legend>
+              <p className="text-xs text-slate-600">
+                O solicitante declarou: <strong>{pedido.segredoJustica === "sim" ? "sim" : "não"}</strong>. Confira e corrija, se for o caso.
+              </p>
+              <div className="flex gap-4 text-sm">
+                {[
+                  ["sim", "Sim"],
+                  ["nao", "Não"]
+                ].map(([v, l]) => (
+                  <label key={v} className="flex items-center gap-1.5">
+                    <input type="radio" name="acao-segredo" value={v} checked={segredo === v} onChange={() => setSegredo(v)} required />
+                    {l}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           {pedeSegredo && (
             <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 space-y-2">
               <p className="font-medium">Processo em segredo de justiça</p>

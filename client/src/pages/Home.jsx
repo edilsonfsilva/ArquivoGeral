@@ -49,11 +49,11 @@ const formSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.tipoNumeracao === "npu" && data.numeroProcesso && !isValidNpu(data.numeroProcesso)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["numeroProcesso"], message: "Número NPU inválido (dígito verificador não confere)" });
+      ctx.addIssue({ code: "custom", path: ["numeroProcesso"], message: "Número NPU inválido (dígito verificador não confere)" });
     }
     // Q9: segredo de justiça só para advogado habilitado (OAB) ou com procuração das partes.
     if (segredoSemLegitimidade(data, !!data.procuracao)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["segredoJustica"], message: MSG_SEGREDO_FORM });
+      ctx.addIssue({ code: "custom", path: ["segredoJustica"], message: MSG_SEGREDO_FORM });
     }
   });
 function readFileAsBase64(file) {

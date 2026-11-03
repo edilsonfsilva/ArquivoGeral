@@ -2,7 +2,7 @@ import { useState } from "react";
 import { BarChart3, Users, FileText } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePedidos, useDebounced } from "@/lib/painel";
-import { gerenciaUsuarios, veDadosPessoais, veAlertasPrazo, STATUS } from "@shared/workflow.js";
+import { gerenciaUsuarios, veDadosPessoais, veAlertasPrazo, veIndicadores, STATUS } from "@shared/workflow.js";
 import { ListaPedidos } from "./ListaPedidos";
 import { Filtros, FILTROS_VAZIOS } from "./Filtros";
 import { DetalhePedido } from "./DetalhePedido";
@@ -42,9 +42,11 @@ export function PainelSetor({ usuario, abas, abaInicial, modelos = false }) {
               <span className="rounded-full bg-slate-100 px-2 text-xs tabular-nums text-slate-700">{daAba(a).length}</span>
             </TabsTrigger>
           ))}
-          <TabsTrigger value="painel" className="py-2 px-3 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
-            <BarChart3 className="h-4 w-4" aria-hidden="true" /> Indicadores
-          </TabsTrigger>
+          {veIndicadores(usuario.role) && (
+            <TabsTrigger value="painel" className="py-2 px-3 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
+              <BarChart3 className="h-4 w-4" aria-hidden="true" /> Indicadores
+            </TabsTrigger>
+          )}
           {modelos && (
             <TabsTrigger value="modelos" className="py-2 px-3 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
               <FileText className="h-4 w-4" aria-hidden="true" /> Modelos de certidão
@@ -76,9 +78,11 @@ export function PainelSetor({ usuario, abas, abaInicial, modelos = false }) {
             />
           </TabsContent>
         ))}
-        <TabsContent value="painel" className="mt-4">
-          <Relatorios />
-        </TabsContent>
+        {veIndicadores(usuario.role) && (
+          <TabsContent value="painel" className="mt-4">
+            <Relatorios />
+          </TabsContent>
+        )}
         {modelos && (
           <TabsContent value="modelos" className="mt-4">
             <ModelosCertidao usuario={usuario} />

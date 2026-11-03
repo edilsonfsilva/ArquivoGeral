@@ -33,6 +33,8 @@ import {
   podeEditarModelos,
   prazoVencido,
   veAlertasPrazo,
+  vePrazo,
+  veIndicadores,
   CERTIDAO_KEYS,
   CAMPOS_MODELO,
   PRAZO_DEVOLUCAO_HORAS_PADRAO
@@ -46,7 +48,12 @@ const DUMMY_HASH = bcrypt.hashSync("usuario-inexistente", 12);
 const FORA_DA_BUSCA = ["solicitado", "indeferido"];
 // Q7: prazo (em horas) para o processo voltar ao arquivo; configurável para testes/ajustes.
 const PRAZO_HORAS = Number(process.env.PRAZO_DEVOLUCAO_HORAS || PRAZO_DEVOLUCAO_HORAS_PADRAO);
-const comPrazo = (r) => ({ ...r, prazoVencido: prazoVencido(r, PRAZO_HORAS) });
+// Selo de prazo vencido só para Atendimento e Gerência; os demais não recebem nem a data de início.
+const comPrazo = (r, role) => {
+  if (vePrazo(role)) return { ...r, prazoVencido: prazoVencido(r, PRAZO_HORAS) };
+  const { disponivelEm, ...resto } = r;
+  return resto;
+};
 
 // ------------------------------------------------------------------
 // Utilitários
@@ -327,7 +334,7 @@ async function registerRoutes(httpServer, app) {
       const escopo = escopoDe(req.user);
       if (!escopo) return res.status(403).json({ message: "Acesso negado" });
       const filtros = listFiltersSchema.parse(req.query);
-      return res.json((await storage.listRequests(filtros, escopo)).map(comPrazo));
+      return res.json((await storage.listRequests(filtros, escopo)).map((r) => comPrazo(r, req.user.role)));
     })
   );
 
@@ -342,8 +349,8 @@ async function registerRoutes(httpServer, app) {
         veDadosPessoais(req.user.role) ? storage.listCertidoes(pedido.id) : []
       ]);
       return res.json({
-        ...comPrazo(pedido),
-        prazoHoras: PRAZO_HORAS,
+        ...comPrazo(pedido, req.user.role),
+        prazoHoras: vePrazo(req.user.role) ? PRAZO_HORAS : undefined,
         timeline,
         certidoes,
         acoes: acoesDisponiveis(req.user.role, pedido, req.user.id),
@@ -588,6 +595,7 @@ async function registerRoutes(httpServer, app) {
   app.get(
     "/api/relatorios",
     auth,
+    requireRole(veIndicadores),
     handle(async (req, res) => res.json(await storage.relatorios({
           pessoal: veDadosPessoais(req.user.role),
           gestao: ["gerente_arquivo", "chefe_atendimento", "chefe_busca"].includes(req.user.role)

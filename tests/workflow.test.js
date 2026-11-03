@@ -60,6 +60,7 @@ const PERFIS_ESPERADOS = {
 
 // Dados mínimos exigidos por ação, para os testes passarem a validação.
 const DADOS = {
+  encaminhar_busca: { segredoJustica: "nao" },
   indeferir: { nota: "Procuração ausente" },
   nao_localizar: { nota: "Caixa vazia" },
   atribuir_busca: { responsavelId: 7 },
@@ -264,13 +265,13 @@ import {
 describe("Q9 — segredo de justiça", () => {
   const sigiloso = (status) => pedidoEm(status, { segredoJustica: "sim" });
   test("encaminhar e entregar exigem confirmar habilitação/procuração", () => {
-    assert.match(verificarAcao("operador_atendimento", "encaminhar_busca", sigiloso("solicitado"), 1, {}), /segredo de justiça/i);
+    assert.match(verificarAcao("operador_atendimento", "encaminhar_busca", sigiloso("solicitado"), 1, { segredoJustica: "sim" }), /segredo de justiça/i);
     assert.match(verificarAcao("operador_atendimento", "entregar_parte", sigiloso("disponivel"), 1, {}), /segredo de justiça/i);
-    assert.equal(verificarAcao("operador_atendimento", "encaminhar_busca", sigiloso("solicitado"), 1, { confirmaHabilitacao: true }), null);
+    assert.equal(verificarAcao("operador_atendimento", "encaminhar_busca", sigiloso("solicitado"), 1, { segredoJustica: "sim", confirmaHabilitacao: true }), null);
     assert.equal(verificarAcao("operador_atendimento", "entregar_parte", sigiloso("disponivel"), 1, { confirmaHabilitacao: true }), null);
   });
   test("pedido sem segredo não exige confirmação", () => {
-    assert.equal(verificarAcao("operador_atendimento", "encaminhar_busca", pedidoEm("solicitado"), 1, {}), null);
+    assert.equal(verificarAcao("operador_atendimento", "encaminhar_busca", pedidoEm("solicitado"), 1, { segredoJustica: "nao" }), null);
   });
   test("a ação continua aparecendo na interface (confirmação é pedida no diálogo)", () => {
     assert.ok(acoesDisponiveis("operador_atendimento", sigiloso("solicitado"), 1).includes("encaminhar_busca"));
@@ -312,5 +313,40 @@ describe("modelos de certidão personalizáveis", () => {
   });
   test("lista de campos documentada", () => {
     for (const c of ["processo", "partes", "comarca", "vara", "requerente", "protocolo"]) assert.ok(CAMPOS_MODELO[c], c);
+  });
+});
+
+// ---------------- Revisão de segurança (02/11/2026) ----------------
+import { classificacaoSegredo } from "../shared/workflow.js";
+
+describe("segredo de justiça classificado pelo Atendimento na triagem", () => {
+  test("encaminhar exige o Atendimento informar se há segredo", () => {
+    assert.match(verificarAcao("operador_atendimento", "encaminhar_busca", pedidoEm("solicitado"), 1, {}), /segredo de justiça/i);
+  });
+  test("solicitante declarou 'não', mas o Atendimento marca 'sim' → exige confirmação", () => {
+    const p = pedidoEm("solicitado", { segredoJustica: "nao" });
+    assert.match(verificarAcao("operador_atendimento", "encaminhar_busca", p, 1, { segredoJustica: "sim" }), /habilitado/i);
+    assert.equal(verificarAcao("operador_atendimento", "encaminhar_busca", p, 1, { segredoJustica: "sim", confirmaHabilitacao: true }), null);
+  });
+  test("classificação efetiva: a do Atendimento prevalece sobre a do solicitante", () => {
+    assert.equal(classificacaoSegredo({ segredoJustica: "nao" }, { segredoJustica: "sim" }), "sim");
+    assert.equal(classificacaoSegredo({ segredoJustica: "sim" }, {}), "sim");
+    assert.equal(classificacaoSegredo({ segredoJustica: "sim" }, { segredoJustica: "nao" }), "nao");
+  });
+});
+
+describe("modelos: campos automáticos seguros", () => {
+  test("nomes herdados de Object não quebram a renderização", () => {
+    for (const c of ["toString", "constructor", "__proto__", "hasOwnProperty", "valueOf"]) {
+      assert.equal(renderModelo(`A {${c}} B`, { numeroProcesso: "1" }), `A {${c}} B`);
+    }
+  });
+});
+
+describe("indicadores e prazo por perfil", () => {
+  test("operador da Busca não vê indicadores globais", async () => {
+    const { veIndicadores, vePrazo } = await import("../shared/workflow.js");
+    for (const r of TODOS) assert.equal(veIndicadores(r), r !== "operador_busca", r);
+    for (const r of TODOS) assert.equal(vePrazo(r), r === "gerente_arquivo" || ATEND.includes(r), r);
   });
 });

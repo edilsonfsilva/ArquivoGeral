@@ -7,7 +7,8 @@ import {
   verificarAcao,
   podeSerResponsavelBusca,
   certidoesDisponiveis,
-  renderModelo
+  renderModelo,
+  classificacaoSegredo
 } from "../shared/workflow.js";
 
 // ------------------------------------------------------------------
@@ -272,7 +273,13 @@ class DatabaseStorage {
       // Q7: o prazo de devolução começa quando o processo chega ao Atendimento.
       if (acaoKey === "receber") sets.push("disponivel_em = NOW()");
       // Q9: registra na trilha que a legitimidade foi conferida.
-      if (acao.segredo && atual.segredoJustica === "sim") {
+      // Triagem: o Atendimento classifica o segredo de justiça (prevalece sobre a declaração do solicitante).
+      const segredo = classificacaoSegredo(atual, dados);
+      if (acaoKey === "encaminhar_busca" && segredo !== atual.segredoJustica) {
+        set("segredo_justica", segredo);
+        nota = `Segredo de justiça reclassificado pelo Atendimento: ${segredo === "sim" ? "sim" : "não"}${nota ? " — " + nota : ""}`;
+      }
+      if (acao.segredo && segredo === "sim") {
         nota = `Segredo de justiça: habilitação/procuração conferida${nota ? " — " + nota : ""}`;
       }
       if (acaoKey === "registrar_devolucao") {

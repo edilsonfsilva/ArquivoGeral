@@ -55,7 +55,7 @@ const PEDIDOS = [
     const id = lista.json[0].id;
     const resp = n % 2 ? "operador_busca_2" : "operador_busca";
     for (const e of etapas) {
-      if (e === "encaminhar") await acao("operador_atendimento", id, { acao: "encaminhar_busca", confirmaHabilitacao: true });
+      if (e === "encaminhar") await acao("operador_atendimento", id, { acao: "encaminhar_busca", segredoJustica: n % 5 === 4 ? "sim" : "nao", confirmaHabilitacao: true });
       if (e === "indeferir") await acao("operador_atendimento", id, { acao: "indeferir", nota: "Requerente não é parte nem procurador constituído (exemplo)." });
       if (e === "atribuir") await acao("servidor_busca", id, { acao: "atribuir_busca", responsavelId: ids[resp] });
       if (e === "localizar") await acao(resp, id, { acao: "localizar", localizacao: `Galpão ${1 + (n % 3)}, estante ${10 + n}, caixa ${200 + n * 7}` });

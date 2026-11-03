@@ -103,3 +103,28 @@ test("modelo de certidão", () => {
   assert.equal(modeloCertidaoSchema.safeParse({ titulo: "", texto: "x" }).success, false);
   assert.equal(modeloCertidaoSchema.safeParse({ titulo: "Ok título", texto: "CERTIFICO algo suficiente.", extra: 1 }).success, false);
 });
+
+test("modelo de certidão rejeita campo automático desconhecido", () => {
+  const r = modeloCertidaoSchema.safeParse({ titulo: "Certidão X", texto: "CERTIFICO que o processo {processo} e {constructor} etc." });
+  assert.equal(r.success, false);
+  assert.match(JSON.stringify(r.error.issues), /constructor/);
+});
+
+test("OAB precisa ter formato válido (UF + número)", () => {
+  const base = {
+    nomeCompleto: "Maria Teste", cpf: "529.982.247-25", whatsapp: "(81) 99999-0000", email: "m@x.com",
+    tipoNumeracao: "tombo", numeroProcesso: "123", partes: "A vs B", comarca: "Recife", varaUnidade: "1ª Vara",
+    segredoJustica: "nao"
+  };
+  for (const oab of ["PE-12345", "PE 12345", "12345/PE", "pe123456", "SP-1234A"]) {
+    assert.equal(publicRequestSchema.safeParse({ ...base, oab }).success, true, oab);
+  }
+  for (const oab of ["x", "12345", "ABC", "PE-"]) {
+    assert.equal(publicRequestSchema.safeParse({ ...base, oab }).success, false, oab);
+  }
+});
+
+test("ação de triagem aceita a classificação de segredo", () => {
+  assert.equal(acaoSchema.safeParse({ acao: "encaminhar_busca", segredoJustica: "sim", confirmaHabilitacao: true }).success, true);
+  assert.equal(acaoSchema.safeParse({ acao: "encaminhar_busca", segredoJustica: "talvez" }).success, false);
+});

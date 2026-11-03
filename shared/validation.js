@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { ROLE_KEYS, ACAO_KEYS, CERTIDAO_KEYS, STATUS_KEYS } from "./workflow.js";
+import { ROLE_KEYS, ACAO_KEYS, CERTIDAO_KEYS, STATUS_KEYS, CAMPOS_MODELO } from "./workflow.js";
+
+// Mensagens padrão do zod em português (servidor e formulário usam este módulo).
+z.config(z.locales.ptBR());
 
 // ------------------------------------------------------------------
 // Constantes de domínio
@@ -62,20 +65,24 @@ export const requestFields = {
     .trim()
     .refine((v) => /^\d{10,11}$/.test(v.replace(/\D/g, "")), "Número de WhatsApp inválido"),
   email: z.string().trim().max(254).email("E-mail inválido"),
-  oab: opcional(30),
-  tipoNumeracao: z.enum(["npu", "tombo"], { required_error: "Selecione o tipo de numeração" }),
+  // OAB: UF + número (ex.: PE 12345, PE-12345, 12345/PE); vazio é permitido.
+  oab: opcional(30).refine(
+    (v) => !v || /^(?:[A-Za-z]{2}[\s\-/]?\d{1,6}[A-Za-z]?|\d{1,6}[A-Za-z]?[\s\-/]?[A-Za-z]{2})$/.test(v),
+    "OAB inválida. Use UF e número, por exemplo PE 12345"
+  ),
+  tipoNumeracao: z.enum(["npu", "tombo"], { error: "Selecione o tipo de numeração" }),
   numeroProcesso: texto(1, 60, "Número do processo é obrigatório"),
   partes: texto(3, 500, "Informe as partes do processo"),
   comarca: texto(2, 120, "Informe a comarca"),
   varaUnidade: texto(2, 160, "Informe a vara ou unidade judiciária"),
-  segredoJustica: z.enum(["sim", "nao"], { required_error: "Informe se há segredo de justiça" }),
+  segredoJustica: z.enum(["sim", "nao"], { error: "Informe se há segredo de justiça" }),
   observacao: opcional(2000)
 };
 
 const npuRefine = (data, ctx) => {
   if (data.tipoNumeracao === "npu" && data.numeroProcesso && !isValidNpu(data.numeroProcesso)) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       path: ["numeroProcesso"],
       message: "Número NPU inválido (dígito verificador não confere)"
     });
@@ -105,7 +112,7 @@ export const publicRequestSchema = z
   .superRefine(npuRefine)
   .superRefine((data, ctx) => {
     if (segredoSemLegitimidade(data, !!data.anexo)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["segredoJustica"], message: MSG_SEGREDO_FORM });
+      ctx.addIssue({ code: "custom", path: ["segredoJustica"], message: MSG_SEGREDO_FORM });
     }
   });
 
@@ -116,7 +123,8 @@ export const acaoSchema = z
     nota: opcional(1000),
     responsavelId: z.number().int().positive().optional().nullable(),
     localizacao: opcional(200),
-    confirmaHabilitacao: z.boolean().optional()
+    confirmaHabilitacao: z.boolean().optional(),
+    segredoJustica: z.enum(["sim", "nao"]).optional()
   })
   .strict();
 
@@ -126,7 +134,12 @@ export const certidaoSchema = z.object({ tipo: z.enum(CERTIDAO_KEYS) }).strict()
 export const modeloCertidaoSchema = z
   .object({
     titulo: texto(3, 120, "Informe o título"),
-    texto: texto(20, 4000, "O texto precisa ter pelo menos 20 caracteres")
+    texto: texto(20, 4000, "O texto precisa ter pelo menos 20 caracteres").superRefine((t, ctx) => {
+      const desconhecidos = [...t.matchAll(/\{(\w+)\}/g)].filter(([, c]) => !Object.hasOwn(CAMPOS_MODELO, c)).map(([m]) => m);
+      if (desconhecidos.length) {
+        ctx.addIssue({ code: "custom", message: `Campo automático desconhecido: ${[...new Set(desconhecidos)].join(", ")}` });
+      }
+    })
   })
   .strict();
 
