@@ -53,7 +53,8 @@ export const STATUS_KEYS = Object.keys(STATUS);
 // ---------------- Ações (transições) ----------------
 // exige: dados obrigatórios · responsavel: campo do pedido que restringe o operador da Busca.
 export const ACOES = {
-  encaminhar_busca: { label: "Encaminhar para a Busca", de: ["solicitado"], para: "aguardando_busca", perfis: ATEND, exige: [] },
+  // segredo: em processo sob segredo de justiça, exige confirmar habilitação/procuração (Q9).
+  encaminhar_busca: { label: "Encaminhar para a Busca", de: ["solicitado"], para: "aguardando_busca", perfis: ATEND, exige: [], segredo: true },
   indeferir: { label: "Indeferir", de: ["solicitado"], para: "indeferido", perfis: ATEND, exige: ["nota"], perigo: true },
   atribuir_busca: {
     label: "Atribuir responsável pela busca",
@@ -80,7 +81,7 @@ export const ACOES = {
     perigo: true
   },
   receber: { label: "Confirmar recebimento do processo", de: ["localizado"], para: "disponivel", perfis: ATEND, exige: [] },
-  entregar_parte: { label: "Entregar à parte / advogado", de: ["disponivel"], para: "em_consulta", perfis: ATEND, exige: [] },
+  entregar_parte: { label: "Entregar à parte / advogado", de: ["disponivel"], para: "em_consulta", perfis: ATEND, exige: [], segredo: true },
   registrar_devolucao: {
     label: "Devolvido — enviar para arquivamento",
     de: ["em_consulta", "disponivel"],
@@ -123,6 +124,8 @@ const MSG_EXIGE = {
   responsavelId: "Selecione o responsável",
   localizacao: "Informe a localização física (estante/caixa)"
 };
+export const MSG_SEGREDO =
+  "Processo em segredo de justiça: confirme que o solicitante é advogado habilitado nos autos ou tem procuração das partes";
 
 /** Devolve null se a ação é permitida, ou a mensagem do impedimento. */
 export function verificarAcao(role, acaoKey, pedido, userId, dados = {}) {
@@ -137,6 +140,7 @@ export function verificarAcao(role, acaoKey, pedido, userId, dados = {}) {
     const v = dados?.[campo];
     if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) return MSG_EXIGE[campo];
   }
+  if (acao.segredo && pedido.segredoJustica === "sim" && dados?.confirmaHabilitacao !== true) return MSG_SEGREDO;
   return null;
 }
 
@@ -146,7 +150,7 @@ export const podeExecutar = (role, acaoKey, pedido, userId, dados) =>
 
 // Para a interface: considera os dados exigidos como "a preencher no diálogo".
 function preencherExigidos(acaoKey) {
-  const out = {};
+  const out = { confirmaHabilitacao: true };
   for (const c of ACOES[acaoKey]?.exige || []) out[c] = "x";
   return out;
 }
@@ -197,5 +201,36 @@ export const CERTIDAO_TIPOS = {
   }
 };
 export const CERTIDAO_KEYS = Object.keys(CERTIDAO_TIPOS);
+// ---------------- Modelos de certidão (personalizáveis) ----------------
+export const podeEditarModelos = (role) => role === "chefe_atendimento" || role === "gerente_arquivo";
+// Campos automáticos aceitos no texto do modelo: {campo} → valor do pedido.
+export const CAMPOS_MODELO = {
+  processo: { label: "Número do processo", de: (d) => d.numeroProcesso },
+  partes: { label: "Partes", de: (d) => d.partes },
+  comarca: { label: "Comarca", de: (d) => d.comarca },
+  vara: { label: "Vara / unidade", de: (d) => d.varaUnidade },
+  requerente: { label: "Nome do requerente", de: (d) => d.requerente ?? d.nomeCompleto },
+  protocolo: { label: "Protocolo", de: (d) => d.protocolo ?? d.protocolId },
+  localizacao: { label: "Localização física", de: (d) => d.localizacaoFisica },
+  motivo: { label: "Motivo da não localização", de: (d) => d.motivo }
+};
+export function renderModelo(texto, dados) {
+  return String(texto || "").replace(/\{(\w+)\}/g, (m, campo) => {
+    const def = CAMPOS_MODELO[campo];
+    const v = def ? def.de(dados || {}) : undefined;
+    return v == null || v === "" ? (def ? "—" : m) : String(v);
+  });
+}
+
+// ---------------- Prazo de devolução (Q7) ----------------
+// Prazo para o processo voltar ao arquivo depois de ficar disponível no Atendimento.
+export const PRAZO_DEVOLUCAO_HORAS_PADRAO = 24;
+export const STATUS_FORA_DO_ARQUIVO = ["disponivel", "em_consulta"];
+export function prazoVencido(pedido, horas = PRAZO_DEVOLUCAO_HORAS_PADRAO, agora = new Date()) {
+  if (!pedido?.disponivelEm || !STATUS_FORA_DO_ARQUIVO.includes(pedido.status)) return false;
+  return agora.getTime() - new Date(pedido.disponivelEm).getTime() > horas * 3600_000;
+}
+export const veAlertasPrazo = (role) => role === "servidor_atendimento" || role === "chefe_atendimento";
+
 export const podeEmitirCertidao = (role) => role === "servidor_atendimento" || role === "chefe_atendimento";
 export const certidoesDisponiveis = (status) => CERTIDAO_KEYS.filter((k) => CERTIDAO_TIPOS[k].status.includes(status));

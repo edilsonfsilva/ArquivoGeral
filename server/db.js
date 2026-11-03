@@ -117,6 +117,21 @@ async function ensureSchema() {
       emitida_em         TIMESTAMP NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_certidoes_request ON certidoes (request_id);
+
+    -- Q7: início do prazo de devolução (quando o processo ficou disponível no Atendimento).
+    ALTER TABLE requests ADD COLUMN IF NOT EXISTS disponivel_em TIMESTAMP;
+    UPDATE requests r SET disponivel_em = (
+      SELECT MAX(e.created_at) FROM request_events e WHERE e.request_id = r.id AND e.acao = 'receber'
+    ) WHERE r.disponivel_em IS NULL AND r.status IN ('disponivel', 'em_consulta');
+
+    -- Modelos de certidão personalizados (sem linha = modelo padrão do sistema).
+    CREATE TABLE IF NOT EXISTS certidao_modelos (
+      tipo           TEXT PRIMARY KEY,
+      titulo         TEXT NOT NULL,
+      texto          TEXT NOT NULL,
+      atualizado_por TEXT NOT NULL,
+      atualizado_em  TIMESTAMP NOT NULL DEFAULT NOW()
+    );
   `);
 }
 

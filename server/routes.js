@@ -11,6 +11,7 @@ import {
   publicRequestSchema,
   acaoSchema,
   certidaoSchema,
+  modeloCertidaoSchema,
   consultaSchema,
   listFiltersSchema,
   observationSchema,
@@ -28,7 +29,13 @@ import {
   certidoesDisponiveis,
   perfisCriaveis,
   podeGerenciarUsuario,
-  gerenciaUsuarios
+  gerenciaUsuarios,
+  podeEditarModelos,
+  prazoVencido,
+  veAlertasPrazo,
+  CERTIDAO_KEYS,
+  CAMPOS_MODELO,
+  PRAZO_DEVOLUCAO_HORAS_PADRAO
 } from "../shared/workflow.js";
 
 const PgSession = connectPg(session);
@@ -37,6 +44,9 @@ const isProd = process.env.NODE_ENV === "production";
 const DUMMY_HASH = bcrypt.hashSync("usuario-inexistente", 12);
 // Status que a Busca nunca vê (ainda na triagem do Atendimento ou indeferidos).
 const FORA_DA_BUSCA = ["solicitado", "indeferido"];
+// Q7: prazo (em horas) para o processo voltar ao arquivo; configurável para testes/ajustes.
+const PRAZO_HORAS = Number(process.env.PRAZO_DEVOLUCAO_HORAS || PRAZO_DEVOLUCAO_HORAS_PADRAO);
+const comPrazo = (r) => ({ ...r, prazoVencido: prazoVencido(r, PRAZO_HORAS) });
 
 // ------------------------------------------------------------------
 // Utilitários
@@ -317,7 +327,7 @@ async function registerRoutes(httpServer, app) {
       const escopo = escopoDe(req.user);
       if (!escopo) return res.status(403).json({ message: "Acesso negado" });
       const filtros = listFiltersSchema.parse(req.query);
-      return res.json(await storage.listRequests(filtros, escopo));
+      return res.json((await storage.listRequests(filtros, escopo)).map(comPrazo));
     })
   );
 
@@ -332,7 +342,8 @@ async function registerRoutes(httpServer, app) {
         veDadosPessoais(req.user.role) ? storage.listCertidoes(pedido.id) : []
       ]);
       return res.json({
-        ...pedido,
+        ...comPrazo(pedido),
+        prazoHoras: PRAZO_HORAS,
         timeline,
         certidoes,
         acoes: acoesDisponiveis(req.user.role, pedido, req.user.id),
@@ -432,12 +443,65 @@ async function registerRoutes(httpServer, app) {
     "/api/certidoes/:id",
     auth,
     requireRole(veDadosPessoais),
-    handle(async (req, res) => {
+    handle(async (req, res, next) => {
+      if (req.params.id === "modelos") return next(); // tratado pela rota de modelos, logo abaixo
       const id = parseId(req.params.id);
       if (!id) return res.status(400).json({ message: "ID inválido" });
       const c = await storage.getCertidao(id);
       if (!c) return res.status(404).json({ message: "Não encontrado" });
       return res.json(c);
+    })
+  );
+
+  // ---------------- Alertas de prazo (Q7) ----------------
+  app.get(
+    "/api/alertas",
+    auth,
+    requireRole(veAlertasPrazo),
+    handle(async (_req, res) => {
+      const lista = await storage.listRequests({}, { pessoal: true });
+      const itens = lista
+        .filter((r) => prazoVencido(r, PRAZO_HORAS))
+        .map((r) => ({
+          id: r.id,
+          protocolId: r.protocolId,
+          numeroProcesso: r.numeroProcesso,
+          status: r.status,
+          nomeCompleto: r.nomeCompleto,
+          disponivelEm: r.disponivelEm
+        }));
+      return res.json({ prazoHoras: PRAZO_HORAS, itens });
+    })
+  );
+
+  // ---------------- Modelos de certidão ----------------
+  app.get(
+    "/api/certidoes/modelos",
+    auth,
+    requireRole(veDadosPessoais),
+    handle(async (_req, res) => {
+      const campos = Object.fromEntries(Object.entries(CAMPOS_MODELO).map(([k, v]) => [k, v.label]));
+      return res.json({ modelos: await storage.listModelos(), campos });
+    })
+  );
+  app.put(
+    "/api/certidoes/modelos/:tipo",
+    auth,
+    requireRole(podeEditarModelos, "Somente o chefe do Atendimento e o Gerente editam os modelos"),
+    handle(async (req, res) => {
+      if (!CERTIDAO_KEYS.includes(req.params.tipo)) return res.status(404).json({ message: "Modelo inexistente" });
+      await storage.salvarModelo(req.params.tipo, modeloCertidaoSchema.parse(req.body), req.user);
+      return res.json({ ok: true });
+    })
+  );
+  app.delete(
+    "/api/certidoes/modelos/:tipo",
+    auth,
+    requireRole(podeEditarModelos, "Somente o chefe do Atendimento e o Gerente editam os modelos"),
+    handle(async (req, res) => {
+      if (!CERTIDAO_KEYS.includes(req.params.tipo)) return res.status(404).json({ message: "Modelo inexistente" });
+      await storage.restaurarModelo(req.params.tipo);
+      return res.json({ ok: true });
     })
   );
 

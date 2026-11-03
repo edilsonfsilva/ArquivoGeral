@@ -20,10 +20,13 @@ export function AcaoDialog({ pedido, acao, onClose }) {
   const [nota, setNota] = useState("");
   const [localizacao, setLocalizacao] = useState("");
   const [responsavelId, setResponsavelId] = useState("");
+  const [confirma, setConfirma] = useState(false);
+  const pedeSegredo = !!def?.segredo && pedido?.segredoJustica === "sim";
 
   useEffect(() => {
     if (!acao) return;
     setNota("");
+    setConfirma(false);
     setLocalizacao(pedido?.localizacaoFisica || "");
   }, [acao, pedido]);
 
@@ -47,11 +50,13 @@ export function AcaoDialog({ pedido, acao, onClose }) {
         acao,
         nota: nota || null,
         localizacao: pedeLocal ? localizacao || null : null,
-        responsavelId: pedeResponsavel && responsavelId ? Number(responsavelId) : null
+        responsavelId: pedeResponsavel && responsavelId ? Number(responsavelId) : null,
+        confirmaHabilitacao: pedeSegredo ? confirma : undefined
       }),
     onSuccess: (r) => {
       queryClient.invalidateQueries({ queryKey: ["/api/requests"] });
       queryClient.invalidateQueries({ queryKey: ["/api/relatorios"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/alertas"] });
       toast({ title: "Pedido atualizado", description: `${pedido.protocolId}: ${statusLabel(r.status)}` });
       onClose();
     }
@@ -59,7 +64,10 @@ export function AcaoDialog({ pedido, acao, onClose }) {
 
   if (!def) return null;
   const faltando =
-    (exige("nota") && !nota.trim()) || (pedeResponsavel && !responsavelId) || (exige("localizacao") && !localizacao.trim());
+    (exige("nota") && !nota.trim()) ||
+    (pedeResponsavel && !responsavelId) ||
+    (exige("localizacao") && !localizacao.trim()) ||
+    (pedeSegredo && !confirma);
 
   return (
     <Dialog open={!!acao} onOpenChange={(o) => !o && onClose()}>
@@ -77,6 +85,24 @@ export function AcaoDialog({ pedido, acao, onClose }) {
             if (!faltando) enviar.mutate();
           }}
         >
+          {pedeSegredo && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 space-y-2">
+              <p className="font-medium">Processo em segredo de justiça</p>
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={confirma}
+                  onChange={(e) => setConfirma(e.target.checked)}
+                  required
+                />
+                <span>
+                  Confirmo que o solicitante é <strong>advogado habilitado nos autos</strong> ou apresentou{" "}
+                  <strong>procuração das partes</strong>.
+                </span>
+              </label>
+            </div>
+          )}
           {pedeResponsavel && (
             <div className="space-y-1">
               <Label htmlFor="acao-resp">Responsável</Label>

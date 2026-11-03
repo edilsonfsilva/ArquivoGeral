@@ -1,4 +1,4 @@
-import { Paperclip, Lock, User, Search as SearchIcon } from "lucide-react";
+import { Paperclip, Lock, User, Search as SearchIcon, AlarmClock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fmtData, statusLabel, statusClasse } from "@/lib/painel";
@@ -46,6 +46,11 @@ export function ListaPedidos({ pedidos, carregando, erro, onRetry, onAbrir, vazi
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold text-slate-900">{r.protocolId}</span>
                   <StatusBadge status={r.status} />
+                  {r.prazoVencido && (
+                    <Badge variant="outline" className="font-sans text-xs gap-1 text-red-800 border-red-300 bg-red-50">
+                      <AlarmClock className="h-3 w-3" aria-hidden="true" /> Prazo de devolução vencido
+                    </Badge>
+                  )}
                   {r.segredoJustica === "sim" && (
                     <Badge variant="outline" className="text-xs gap-1 text-amber-800 border-amber-200 bg-amber-50">
                       <Lock className="h-3 w-3" aria-hidden="true" /> Segredo de justiça

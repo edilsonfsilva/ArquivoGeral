@@ -250,3 +250,67 @@ describe("dados pessoais e certidões", () => {
     assert.equal(podeSerResponsavelBusca("gerente_arquivo"), false);
   });
 });
+
+// ---------------- Decisões de 02/11/2026: Q7 (prazo), Q9 (segredo) e modelos de certidão ----------------
+import {
+  prazoVencido,
+  veAlertasPrazo,
+  podeEditarModelos,
+  renderModelo,
+  CAMPOS_MODELO,
+  PRAZO_DEVOLUCAO_HORAS_PADRAO
+} from "../shared/workflow.js";
+
+describe("Q9 — segredo de justiça", () => {
+  const sigiloso = (status) => pedidoEm(status, { segredoJustica: "sim" });
+  test("encaminhar e entregar exigem confirmar habilitação/procuração", () => {
+    assert.match(verificarAcao("operador_atendimento", "encaminhar_busca", sigiloso("solicitado"), 1, {}), /segredo de justiça/i);
+    assert.match(verificarAcao("operador_atendimento", "entregar_parte", sigiloso("disponivel"), 1, {}), /segredo de justiça/i);
+    assert.equal(verificarAcao("operador_atendimento", "encaminhar_busca", sigiloso("solicitado"), 1, { confirmaHabilitacao: true }), null);
+    assert.equal(verificarAcao("operador_atendimento", "entregar_parte", sigiloso("disponivel"), 1, { confirmaHabilitacao: true }), null);
+  });
+  test("pedido sem segredo não exige confirmação", () => {
+    assert.equal(verificarAcao("operador_atendimento", "encaminhar_busca", pedidoEm("solicitado"), 1, {}), null);
+  });
+  test("a ação continua aparecendo na interface (confirmação é pedida no diálogo)", () => {
+    assert.ok(acoesDisponiveis("operador_atendimento", sigiloso("solicitado"), 1).includes("encaminhar_busca"));
+    assert.equal(ACOES.encaminhar_busca.segredo, true);
+    assert.equal(ACOES.entregar_parte.segredo, true);
+  });
+});
+
+describe("Q7 — prazo de devolução", () => {
+  const agora = new Date("2026-11-03T15:00:00Z");
+  const h = (n) => new Date(agora.getTime() - n * 3600_000).toISOString();
+  test("padrão de 24 horas", () => assert.equal(PRAZO_DEVOLUCAO_HORAS_PADRAO, 24));
+  test("vence após o prazo enquanto o processo está fora do arquivo", () => {
+    assert.equal(prazoVencido({ status: "disponivel", disponivelEm: h(25) }, 24, agora), true);
+    assert.equal(prazoVencido({ status: "em_consulta", disponivelEm: h(25) }, 24, agora), true);
+    assert.equal(prazoVencido({ status: "em_consulta", disponivelEm: h(23) }, 24, agora), false);
+  });
+  test("não vence depois de devolvido ou sem data", () => {
+    assert.equal(prazoVencido({ status: "aguardando_arquivamento", disponivelEm: h(48) }, 24, agora), false);
+    assert.equal(prazoVencido({ status: "disponivel", disponivelEm: null }, 24, agora), false);
+  });
+  test("alerta vai para servidor e chefe do Atendimento", () => {
+    for (const r of TODOS) assert.equal(veAlertasPrazo(r), ["servidor_atendimento", "chefe_atendimento"].includes(r), r);
+  });
+});
+
+describe("modelos de certidão personalizáveis", () => {
+  test("chefe do Atendimento e Gerente editam os modelos", () => {
+    for (const r of TODOS) assert.equal(podeEditarModelos(r), ["chefe_atendimento", "gerente_arquivo"].includes(r), r);
+  });
+  test("campos automáticos são substituídos; desconhecidos ficam como estão", () => {
+    const t = renderModelo("Processo {processo} entre {partes}, {comarca}/{vara}. {inexistente}", {
+      numeroProcesso: "123",
+      partes: "A x B",
+      comarca: "Recife",
+      varaUnidade: "1ª Vara"
+    });
+    assert.equal(t, "Processo 123 entre A x B, Recife/1ª Vara. {inexistente}");
+  });
+  test("lista de campos documentada", () => {
+    for (const c of ["processo", "partes", "comarca", "vara", "requerente", "protocolo"]) assert.ok(CAMPOS_MODELO[c], c);
+  });
+});

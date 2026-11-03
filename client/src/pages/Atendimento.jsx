@@ -25,6 +25,13 @@ const ABAS = [
     ajuda: "Registre a entrega à parte ou ao advogado e, na devolução, envie o processo para rearquivamento."
   },
   {
+    id: "prazo",
+    label: "Prazo vencido",
+    filtro: (r) => r.prazoVencido,
+    ajuda: "Processos que estão fora do arquivo há mais de 1 dia (prazo de devolução). Providencie a devolução e o envio para rearquivamento.",
+    vazio: "Nenhum processo com prazo vencido."
+  },
+  {
     id: "nao_localizados",
     label: "Não localizados",
     statuses: ["nao_localizado"],
@@ -44,7 +51,7 @@ export default function Atendimento() {
   if (!usuario || usuario.setor !== "atendimento") return <Carregando />;
   return (
     <PainelLayout usuario={usuario} titulo="Atendimento" descricao="Triagem, entrega e devolução de processos desarquivados." icone={Headset}>
-      <PainelSetor usuario={usuario} abas={ABAS} />
+      <PainelSetor usuario={usuario} abas={ABAS} modelos />
     </PainelLayout>
   );
 }

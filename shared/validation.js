@@ -92,10 +92,22 @@ const anexoSchema = z
   .optional()
   .nullable();
 
+// Q9: processo em segredo de justiça só para advogado habilitado (OAB) ou quem tem procuração das partes.
+export const MSG_SEGREDO_FORM =
+  "Processo em segredo de justiça: informe a OAB (advogado habilitado nos autos) ou anexe a procuração das partes";
+export function segredoSemLegitimidade({ segredoJustica, oab }, temAnexo) {
+  return segredoJustica === "sim" && !String(oab || "").trim() && !temAnexo;
+}
+
 export const publicRequestSchema = z
   .object({ ...requestFields, anexo: anexoSchema })
   .strict()
-  .superRefine(npuRefine);
+  .superRefine(npuRefine)
+  .superRefine((data, ctx) => {
+    if (segredoSemLegitimidade(data, !!data.anexo)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["segredoJustica"], message: MSG_SEGREDO_FORM });
+    }
+  });
 
 // Ação do fluxo (a permissão e os dados exigidos são conferidos em shared/workflow.js).
 export const acaoSchema = z
@@ -103,11 +115,20 @@ export const acaoSchema = z
     acao: z.enum(ACAO_KEYS),
     nota: opcional(1000),
     responsavelId: z.number().int().positive().optional().nullable(),
-    localizacao: opcional(200)
+    localizacao: opcional(200),
+    confirmaHabilitacao: z.boolean().optional()
   })
   .strict();
 
 export const certidaoSchema = z.object({ tipo: z.enum(CERTIDAO_KEYS) }).strict();
+
+// Modelo de certidão personalizado (título e texto com campos automáticos).
+export const modeloCertidaoSchema = z
+  .object({
+    titulo: texto(3, 120, "Informe o título"),
+    texto: texto(20, 4000, "O texto precisa ter pelo menos 20 caracteres")
+  })
+  .strict();
 
 // Consulta pública do andamento: protocolo + CPF do solicitante.
 export const consultaSchema = z

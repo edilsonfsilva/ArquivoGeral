@@ -79,3 +79,27 @@ test("usuários: perfil novo e matrícula obrigatória", () => {
   assert.equal(updateUserSchema.safeParse({ ativo: false }).success, true);
   assert.equal(updateUserSchema.safeParse({ ativo: "nao" }).success, false);
 });
+
+import { modeloCertidaoSchema } from "../shared/validation.js";
+
+test("Q9: segredo de justiça exige OAB ou procuração no formulário", () => {
+  const base = {
+    nomeCompleto: "Maria Teste", cpf: "529.982.247-25", whatsapp: "(81) 99999-0000", email: "m@x.com",
+    tipoNumeracao: "tombo", numeroProcesso: "123", partes: "A vs B", comarca: "Recife", varaUnidade: "1ª Vara",
+    segredoJustica: "sim"
+  };
+  const r = publicRequestSchema.safeParse(base);
+  assert.equal(r.success, false);
+  assert.match(JSON.stringify(r.error.issues), /segredo de justiça/i);
+  assert.equal(publicRequestSchema.safeParse({ ...base, oab: "PE-12345" }).success, true);
+  assert.equal(
+    publicRequestSchema.safeParse({ ...base, anexo: { name: "p.pdf", type: "application/pdf", base64: "JVBERi0=" } }).success,
+    true
+  );
+});
+
+test("modelo de certidão", () => {
+  assert.equal(modeloCertidaoSchema.safeParse({ titulo: "Certidão X", texto: "CERTIFICO que o processo {processo} foi localizado." }).success, true);
+  assert.equal(modeloCertidaoSchema.safeParse({ titulo: "", texto: "x" }).success, false);
+  assert.equal(modeloCertidaoSchema.safeParse({ titulo: "Ok título", texto: "CERTIFICO algo suficiente.", extra: 1 }).success, false);
+});

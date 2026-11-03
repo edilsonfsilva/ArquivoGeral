@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { BarChart3, Users } from "lucide-react";
+import { BarChart3, Users, FileText } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePedidos, useDebounced } from "@/lib/painel";
-import { gerenciaUsuarios, veDadosPessoais, STATUS } from "@shared/workflow.js";
+import { gerenciaUsuarios, veDadosPessoais, veAlertasPrazo, STATUS } from "@shared/workflow.js";
 import { ListaPedidos } from "./ListaPedidos";
 import { Filtros, FILTROS_VAZIOS } from "./Filtros";
 import { DetalhePedido } from "./DetalhePedido";
 import { Relatorios } from "./Relatorios";
 import { GestaoUsuarios } from "./GestaoUsuarios";
+import { ModelosCertidao } from "./ModelosCertidao";
+import { AlertaPrazo } from "./AlertaPrazo";
 
 // Mesmo limite do servidor (storage.LIMITE_FINAIS) para pedidos finalizados.
 const LIMITE_FINAIS = 300;
@@ -17,7 +19,7 @@ const LIMITE_FINAIS = 300;
  * filtros de servidor, painel de indicadores e gestão da equipe (para quem pode).
  * abas: [{ id, label, statuses?: string[], filtro?: (pedido, usuario) => bool, vazio?: string }]
  */
-export function PainelSetor({ usuario, abas, abaInicial }) {
+export function PainelSetor({ usuario, abas, abaInicial, modelos = false }) {
   const [filtros, setFiltros] = useState(FILTROS_VAZIOS);
   const filtrosAdiados = useDebounced(filtros);
   const [aberto, setAberto] = useState(null);
@@ -31,6 +33,7 @@ export function PainelSetor({ usuario, abas, abaInicial }) {
 
   return (
     <>
+      {veAlertasPrazo(usuario.role) && <AlertaPrazo onAbrir={setAberto} />}
       <Tabs defaultValue={abaInicial || abas[0].id} className="w-full">
         <TabsList className="bg-white border shadow-sm w-full justify-start h-auto p-1 flex-wrap">
           {abas.map((a) => (
@@ -42,6 +45,11 @@ export function PainelSetor({ usuario, abas, abaInicial }) {
           <TabsTrigger value="painel" className="py-2 px-3 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
             <BarChart3 className="h-4 w-4" aria-hidden="true" /> Indicadores
           </TabsTrigger>
+          {modelos && (
+            <TabsTrigger value="modelos" className="py-2 px-3 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
+              <FileText className="h-4 w-4" aria-hidden="true" /> Modelos de certidão
+            </TabsTrigger>
+          )}
           {gerenciaUsuarios(usuario.role) && (
             <TabsTrigger value="equipe" className="py-2 px-3 gap-2 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">
               <Users className="h-4 w-4" aria-hidden="true" /> {usuario.role === "gerente_arquivo" ? "Usuários" : "Equipe"}
@@ -71,6 +79,11 @@ export function PainelSetor({ usuario, abas, abaInicial }) {
         <TabsContent value="painel" className="mt-4">
           <Relatorios />
         </TabsContent>
+        {modelos && (
+          <TabsContent value="modelos" className="mt-4">
+            <ModelosCertidao usuario={usuario} />
+          </TabsContent>
+        )}
         {gerenciaUsuarios(usuario.role) && (
           <TabsContent value="equipe" className="mt-4">
             <GestaoUsuarios usuario={usuario} />

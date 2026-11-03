@@ -77,6 +77,18 @@ export function DetalhePedido({ pedidoId, onClose }) {
               <SheetDescription>Registrado em {fmtData(p.createdAt)} · atualizado em {fmtData(p.updatedAt)}</SheetDescription>
             </SheetHeader>
 
+            {p.prazoVencido && (
+              <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+                <strong>Prazo de devolução vencido.</strong> O processo está fora do arquivo desde {fmtData(p.disponivelEm)} (prazo de{" "}
+                {p.prazoHoras} h). Providencie a devolução e o envio para rearquivamento.
+              </div>
+            )}
+            {p.segredoJustica === "sim" && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                <strong>Segredo de justiça:</strong> só advogado habilitado nos autos ou quem tem procuração das partes pode ter
+                acesso ao processo. A confirmação é pedida na triagem e na entrega.
+              </div>
+            )}
             {p.acoes.length > 0 && (
               <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
                 <div className="text-sm font-medium text-slate-900">Próximo passo</div>

@@ -6,7 +6,8 @@ import {
   CERTIDAO_TIPOS,
   verificarAcao,
   podeSerResponsavelBusca,
-  certidoesDisponiveis
+  certidoesDisponiveis,
+  renderModelo
 } from "../shared/workflow.js";
 
 // ------------------------------------------------------------------
@@ -51,7 +52,7 @@ const REQ_BASE = `
   r.busca_responsavel_id AS "buscaResponsavelId",
   r.arquivamento_responsavel_id AS "arquivamentoResponsavelId",
   ua.name AS "atendimentoResponsavel", ub.name AS "buscaResponsavel", uc.name AS "arquivamentoResponsavel",
-  r.created_at AS "createdAt", r.updated_at AS "updatedAt"`;
+  r.disponivel_em AS "disponivelEm", r.created_at AS "createdAt", r.updated_at AS "updatedAt"`;
 const REQ_PESSOAL = `,
   r.cpf, r.whatsapp, r.email, r.oab, r.observacao,
   r.anexo_name AS "anexoName", r.anexo_size AS "anexoSize", r.anexo_type AS "anexoType"`;
@@ -235,7 +236,7 @@ class DatabaseStorage {
   aplicarAcao(id, acaoKey, user, dados) {
     return tx(async (c) => {
       const atual = await one(
-        `SELECT id, status, busca_responsavel_id AS "buscaResponsavelId",
+        `SELECT id, status, segredo_justica AS "segredoJustica", busca_responsavel_id AS "buscaResponsavelId",
                 arquivamento_responsavel_id AS "arquivamentoResponsavelId"
          FROM requests WHERE id = $1 FOR UPDATE`,
         [id],
@@ -268,6 +269,12 @@ class DatabaseStorage {
       if (acaoKey === "indeferir" || acaoKey === "nao_localizar") set("motivo", dados.nota);
       // Nova busca: o motivo da não localização anterior fica só na linha do tempo.
       if (acaoKey === "nova_busca") sets.push("motivo = NULL");
+      // Q7: o prazo de devolução começa quando o processo chega ao Atendimento.
+      if (acaoKey === "receber") sets.push("disponivel_em = NOW()");
+      // Q9: registra na trilha que a legitimidade foi conferida.
+      if (acao.segredo && atual.segredoJustica === "sim") {
+        nota = `Segredo de justiça: habilitação/procuração conferida${nota ? " — " + nota : ""}`;
+      }
       if (acaoKey === "registrar_devolucao") {
         // P3: sugere para o arquivamento quem fez a busca.
         sets.push("arquivamento_responsavel_id = COALESCE(arquivamento_responsavel_id, busca_responsavel_id)");
@@ -324,10 +331,11 @@ class DatabaseStorage {
       const ano = new Date().getFullYear();
       const numero = `CERT-${ano}-${String(seq.n).padStart(6, "0")}`;
       const codigo = randomBytes(9).toString("base64url").toUpperCase().replace(/[^A-Z0-9]/g, "X").slice(0, 12);
+      const modelo = await this.getModelo(tipo, c);
       const dados = {
         tipo,
-        titulo: CERTIDAO_TIPOS[tipo].label,
-        texto: CERTIDAO_TIPOS[tipo].texto,
+        titulo: modelo.titulo,
+        texto: renderModelo(modelo.texto, r),
         protocolo: r.protocolId,
         numeroProcesso: r.numeroProcesso,
         tipoNumeracao: r.tipoNumeracao,
@@ -358,6 +366,40 @@ class DatabaseStorage {
       return cert;
     });
   }
+  // ---------------- Modelos de certidão ----------------
+  async getModelo(tipo, client) {
+    const row = await one(`SELECT titulo, texto FROM certidao_modelos WHERE tipo = $1`, [tipo], client);
+    return row || { titulo: CERTIDAO_TIPOS[tipo].label, texto: CERTIDAO_TIPOS[tipo].texto };
+  }
+  async listModelos() {
+    const rows = await q(
+      `SELECT tipo, titulo, texto, atualizado_por AS "atualizadoPor", atualizado_em AS "atualizadoEm" FROM certidao_modelos`
+    );
+    return Object.keys(CERTIDAO_TIPOS).map((tipo) => {
+      const p = rows.find((r) => r.tipo === tipo);
+      return {
+        tipo,
+        titulo: p?.titulo ?? CERTIDAO_TIPOS[tipo].label,
+        texto: p?.texto ?? CERTIDAO_TIPOS[tipo].texto,
+        personalizado: !!p,
+        atualizadoPor: p?.atualizadoPor ?? null,
+        atualizadoEm: p?.atualizadoEm ?? null,
+        padrao: { titulo: CERTIDAO_TIPOS[tipo].label, texto: CERTIDAO_TIPOS[tipo].texto }
+      };
+    });
+  }
+  salvarModelo(tipo, { titulo, texto }, user) {
+    return q(
+      `INSERT INTO certidao_modelos (tipo, titulo, texto, atualizado_por) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (tipo) DO UPDATE SET titulo = EXCLUDED.titulo, texto = EXCLUDED.texto,
+         atualizado_por = EXCLUDED.atualizado_por, atualizado_em = NOW()`,
+      [tipo, titulo, texto, user.name]
+    );
+  }
+  restaurarModelo(tipo) {
+    return q(`DELETE FROM certidao_modelos WHERE tipo = $1`, [tipo]);
+  }
+
   listCertidoes(requestId) {
     return q(
       `SELECT c.id, c.tipo, c.numero, c.codigo_verificacao AS "codigo", c.emitida_em AS "emitidaEm", u.name AS "emitidaPor"

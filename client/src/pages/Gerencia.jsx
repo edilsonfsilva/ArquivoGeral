@@ -19,7 +19,7 @@ export default function Gerencia() {
   if (!usuario || usuario.setor !== "gerencia") return <Carregando />;
   return (
     <PainelLayout usuario={usuario} titulo="Gerência do Arquivo" descricao="Indicadores gerais e cadastro dos chefes de unidade." icone={Landmark}>
-      <PainelSetor usuario={usuario} abas={ABAS} abaInicial="painel" />
+      <PainelSetor usuario={usuario} abas={ABAS} abaInicial="painel" modelos />
     </PainelLayout>
   );
 }

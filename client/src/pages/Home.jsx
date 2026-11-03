@@ -30,7 +30,9 @@ import {
   MAX_FILE_BYTES,
   MAX_FILE_MB,
   isValidNpu,
-  requestFields
+  requestFields,
+  segredoSemLegitimidade,
+  MSG_SEGREDO_FORM
 } from "@shared/validation.js";
 const formSchema = z
   .object({
@@ -48,6 +50,10 @@ const formSchema = z
   .superRefine((data, ctx) => {
     if (data.tipoNumeracao === "npu" && data.numeroProcesso && !isValidNpu(data.numeroProcesso)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["numeroProcesso"], message: "Número NPU inválido (dígito verificador não confere)" });
+    }
+    // Q9: segredo de justiça só para advogado habilitado (OAB) ou com procuração das partes.
+    if (segredoSemLegitimidade(data, !!data.procuracao)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["segredoJustica"], message: MSG_SEGREDO_FORM });
     }
   });
 function readFileAsBase64(file) {
@@ -109,7 +115,7 @@ function Home() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
     onError: (err) => {
-      const body = String(err?.message || "").replace(/^d+:s*/, "");
+      const body = String(err?.message || "").replace(/^\d+:\s*/, "");
       let description = "Tente novamente em alguns instantes.";
       try {
         description = JSON.parse(body).message || description;
