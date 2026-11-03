@@ -40,6 +40,7 @@ export function GestaoUsuarios({ usuario }) {
     },
     onSuccess: (_u, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users/responsaveis-busca"] });
       toast({ title: vars.id ? "Usuário atualizado" : "Usuário cadastrado" });
       setForm(null);
     }
@@ -48,6 +49,7 @@ export function GestaoUsuarios({ usuario }) {
     mutationFn: (u) => api("PATCH", `/api/users/${u.id}`, { ativo: !u.ativo }),
     onSuccess: (u) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users/responsaveis-busca"] });
       toast({ title: u.ativo ? "Usuário reativado" : "Usuário desativado" });
       setDesativar(null);
     }

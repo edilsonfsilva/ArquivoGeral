@@ -56,8 +56,7 @@ export function DetalhePedido({ pedidoId, onClose }) {
     mutationFn: (tipo) => api("POST", `/api/requests/${pedidoId}/certidoes`, { tipo }),
     onSuccess: (c) => {
       queryClient.invalidateQueries({ queryKey: ["/api/requests", pedidoId] });
-      toast({ title: "Certidão emitida", description: c.numero });
-      window.open(`/certidao/${c.id}`, "_blank", "noopener");
+      toast({ title: "Certidão emitida", description: `${c.numero} — use "Abrir / imprimir" na lista de certidões.` });
     }
   });
 

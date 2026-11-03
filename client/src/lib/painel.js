@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "./queryClient";
 import { STATUS, ROLES } from "@shared/workflow.js";
@@ -47,6 +47,7 @@ export function usePedidos(filtros = {}) {
       return res.json();
     },
     staleTime: 0,
+    placeholderData: keepPreviousData,
     refetchInterval: 30_000,
     refetchOnWindowFocus: true
   });
@@ -66,4 +67,14 @@ export function statusClasse(s) {
   if (s === "nao_localizado") return "bg-red-50 text-red-800 border-red-200";
   if (st.setor === "busca") return "bg-amber-50 text-amber-900 border-amber-200";
   return "bg-sky-50 text-sky-900 border-sky-200";
+}
+
+// Atrasa a aplicação de um valor (ex.: texto digitado nos filtros) para não consultar a cada tecla.
+export function useDebounced(valor, ms = 300) {
+  const [v, setV] = useState(valor);
+  useEffect(() => {
+    const t = setTimeout(() => setV(valor), ms);
+    return () => clearTimeout(t);
+  }, [valor, ms]);
+  return v;
 }

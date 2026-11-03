@@ -64,12 +64,14 @@ export function Relatorios() {
           rotulo={(i) => `${i.comarca} · ${i.varaUnidade}`}
           valor={(i) => i.total}
         />
-        <Barras
-          titulo="Atuação por operador (ações no fluxo)"
-          itens={data.porOperador}
-          rotulo={(i) => `${i.nome} — ${roleLabel(i.role)} · ${i.pedidos} pedido(s)`}
-          valor={(i) => i.acoes}
-        />
+        {data.porOperador.length > 0 && (
+          <Barras
+            titulo="Atuação por operador (ações no fluxo)"
+            itens={data.porOperador}
+            rotulo={(i) => `${i.nome} — ${roleLabel(i.role)} · ${i.pedidos} pedido(s)`}
+            valor={(i) => i.acoes}
+          />
+        )}
         {data.solicitantes.length > 0 && (
           <Barras
             titulo="Quem mais solicita"

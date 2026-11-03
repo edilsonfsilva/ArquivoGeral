@@ -10,7 +10,9 @@ if (!process.env.DATABASE_URL) {
 pg.types.setTypeParser(1114, (s) => new Date(s.replace(" ", "T") + "Z"));
 
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL
+  connectionString: process.env.DATABASE_URL,
+  // NOW() e TIMESTAMP sempre em UTC, independentemente do fuso configurado no servidor do banco.
+  options: "-c timezone=UTC"
 });
 const db = drizzle(pool, { schema });
 

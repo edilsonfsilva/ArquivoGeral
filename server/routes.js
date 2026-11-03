@@ -491,6 +491,10 @@ async function registerRoutes(httpServer, app) {
       if (!target || !podeGerenciarUsuario(req.user.role, target.role)) {
         return res.status(404).json({ message: "Não encontrado" });
       }
+      // Fora dos perfis que cadastra (ex.: Gerente sobre operadores), só pode ativar/desativar.
+      if (!perfisCriaveis(req.user.role).includes(target.role) && Object.keys(body).some((k) => k !== "ativo")) {
+        return res.status(403).json({ message: "Para este usuário você só pode ativar ou desativar o acesso" });
+      }
       if (body.role && body.role !== target.role && !perfisCriaveis(req.user.role).includes(body.role)) {
         return res.status(403).json({ message: "Seu perfil não pode atribuir este perfil" });
       }
@@ -511,6 +515,7 @@ async function registerRoutes(httpServer, app) {
       if (body.password) data.password = await bcrypt.hash(body.password, 12);
       if (Object.keys(data).length === 0) return res.status(400).json({ message: "Nada para atualizar" });
       const updated = await storage.updateUser(id, data);
+      if (data.password) await storage.encerrarSessoes(id, id === req.user.id ? req.sessionID : null);
       return res.json(publicUser(updated));
     })
   );
@@ -519,7 +524,10 @@ async function registerRoutes(httpServer, app) {
   app.get(
     "/api/relatorios",
     auth,
-    handle(async (req, res) => res.json(await storage.relatorios({ pessoal: veDadosPessoais(req.user.role) })))
+    handle(async (req, res) => res.json(await storage.relatorios({
+          pessoal: veDadosPessoais(req.user.role),
+          gestao: ["gerente_arquivo", "chefe_atendimento", "chefe_busca"].includes(req.user.role)
+        })))
   );
 
   // Rota /api inexistente: 404 em JSON (não cai no index.html do SPA).

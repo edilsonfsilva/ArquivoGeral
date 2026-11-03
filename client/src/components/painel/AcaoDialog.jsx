@@ -25,16 +25,21 @@ export function AcaoDialog({ pedido, acao, onClose }) {
     if (!acao) return;
     setNota("");
     setLocalizacao(pedido?.localizacaoFisica || "");
-    // P3: no arquivamento, sugere quem fez a busca.
-    const sugerido = acao === "atribuir_arquivamento" ? pedido?.arquivamentoResponsavelId : pedido?.buscaResponsavelId;
-    setResponsavelId(sugerido ? String(sugerido) : "");
   }, [acao, pedido]);
 
   const responsaveis = useQuery({
     queryKey: ["/api/users/responsaveis-busca"],
     enabled: !!pedeResponsavel,
-    staleTime: 60_000
+    staleTime: 0
   });
+
+  // P3: no arquivamento, sugere quem fez a busca — só se essa pessoa ainda estiver ativa na lista.
+  useEffect(() => {
+    if (!acao || !pedeResponsavel) return;
+    const sugerido = acao === "atribuir_arquivamento" ? pedido?.arquivamentoResponsavelId : pedido?.buscaResponsavelId;
+    const valido = (responsaveis.data || []).some((u) => u.id === sugerido);
+    setResponsavelId(valido ? String(sugerido) : "");
+  }, [acao, pedido, pedeResponsavel, responsaveis.data]);
 
   const enviar = useMutation({
     mutationFn: () =>

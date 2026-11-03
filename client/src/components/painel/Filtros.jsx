@@ -19,8 +19,15 @@ function operadoresDe(pedidos) {
   return [...m.entries()].filter(([, n]) => n).sort((a, b) => a[1].localeCompare(b[1]));
 }
 
-export function Filtros({ filtros, onChange, pedidos, mostrarSolicitante }) {
-  const operadores = useMemo(() => operadoresDe(pedidos || []), [pedidos]);
+export function Filtros({ filtros, onChange, pedidos, todos, mostrarSolicitante }) {
+  const operadores = useMemo(() => {
+    const lista = operadoresDe(todos || pedidos || []);
+    // Mantém visível o operador escolhido mesmo que ele não apareça nos pedidos atuais.
+    if (filtros.operadorId && !lista.some(([id]) => String(id) === String(filtros.operadorId))) {
+      lista.unshift([filtros.operadorId, "Operador selecionado"]);
+    }
+    return lista;
+  }, [todos, pedidos, filtros.operadorId]);
   const set = (k) => (e) => onChange({ ...filtros, [k]: e.target.value });
 
   const exportar = () => {

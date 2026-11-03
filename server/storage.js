@@ -46,14 +46,14 @@ const REQ_BASE = `
   r.id, r.protocol_id AS "protocolId", r.status, r.nome_completo AS "nomeCompleto",
   r.tipo_numeracao AS "tipoNumeracao", r.numero_processo AS "numeroProcesso", r.partes,
   r.comarca, r.vara_unidade AS "varaUnidade", r.segredo_justica AS "segredoJustica",
-  r.observacao, r.localizacao_fisica AS "localizacaoFisica", r.motivo,
+  r.localizacao_fisica AS "localizacaoFisica", r.motivo,
   r.atendimento_responsavel_id AS "atendimentoResponsavelId",
   r.busca_responsavel_id AS "buscaResponsavelId",
   r.arquivamento_responsavel_id AS "arquivamentoResponsavelId",
   ua.name AS "atendimentoResponsavel", ub.name AS "buscaResponsavel", uc.name AS "arquivamentoResponsavel",
   r.created_at AS "createdAt", r.updated_at AS "updatedAt"`;
 const REQ_PESSOAL = `,
-  r.cpf, r.whatsapp, r.email, r.oab,
+  r.cpf, r.whatsapp, r.email, r.oab, r.observacao,
   r.anexo_name AS "anexoName", r.anexo_size AS "anexoSize", r.anexo_type AS "anexoType"`;
 const REQ_JOINS = `
   FROM requests r
@@ -61,6 +61,14 @@ const REQ_JOINS = `
   LEFT JOIN users ub ON ub.id = r.busca_responsavel_id
   LEFT JOIN users uc ON uc.id = r.arquivamento_responsavel_id`;
 const reqCols = (pessoal) => REQ_BASE + (pessoal ? REQ_PESSOAL : "");
+
+// Horário local (Recife) para filtros de data e indicadores; o banco grava UTC.
+const TZ = "America/Recife";
+const inicioDoDiaLocal = (dataSql) => `((${dataSql})::timestamp AT TIME ZONE '${TZ}') AT TIME ZONE 'UTC'`;
+const LOCAL = (col) => `((${col} AT TIME ZONE 'UTC') AT TIME ZONE '${TZ}')`;
+const AGORA_LOCAL = `(NOW() AT TIME ZONE '${TZ}')`;
+export const STATUS_FINAIS = Object.keys(STATUS).filter((k) => STATUS[k].final);
+export const LIMITE_FINAIS = 300;
 
 const SOLICITANTE = { id: null, name: "Solicitante (formulário público)", role: "publico" };
 
@@ -91,6 +99,10 @@ class DatabaseStorage {
     if (!sets.length) return this.getUser(id);
     vals.push(id);
     return one(`UPDATE users SET ${sets.join(", ")} WHERE id = $${vals.length} RETURNING ${USER_COLS}`, vals);
+  }
+  // Encerra todas as sessões de um usuário (ex.: troca de senha feita por um gestor).
+  async encerrarSessoes(userId, exceto) {
+    await q(`DELETE FROM "session" WHERE (sess->>'userId')::int = $1 AND sid <> COALESCE($2, '')`, [userId, exceto ?? null]);
   }
   listUsers(roles) {
     if (roles) return q(`SELECT ${USER_COLS} FROM users WHERE role = ANY($1) ORDER BY ativo DESC, name`, [roles]);
@@ -157,7 +169,7 @@ class DatabaseStorage {
    * Lista com escopo do perfil e filtros.
    * escopo: { pessoal, excluirStatus?: [], responsavelId?: n }
    */
-  listRequests(filtros = {}, escopo = {}) {
+  async listRequests(filtros = {}, escopo = {}) {
     const where = [];
     const vals = [];
     const p = (v) => {
@@ -177,8 +189,9 @@ class DatabaseStorage {
         OR r.arquivamento_responsavel_id = ${op}
         OR EXISTS (SELECT 1 FROM request_events e WHERE e.request_id = r.id AND e.user_id = ${op}))`);
     }
-    if (filtros.de) where.push(`r.created_at >= ${p(filtros.de)}::date`);
-    if (filtros.ate) where.push(`r.created_at < (${p(filtros.ate)}::date + 1)`);
+    // Dias do filtro no horário de Recife, convertidos para o UTC gravado no banco.
+    if (filtros.de) where.push(`r.created_at >= ${inicioDoDiaLocal(`${p(filtros.de)}::date`)}`);
+    if (filtros.ate) where.push(`r.created_at < ${inicioDoDiaLocal(`(${p(filtros.ate)}::date + 1)`)}`);
     if (filtros.q) {
       const like = p("%" + filtros.q + "%");
       const campos = [`r.protocol_id ILIKE ${like}`, `r.numero_processo ILIKE ${like}`, `r.partes ILIKE ${like}`, `r.nome_completo ILIKE ${like}`];
@@ -189,10 +202,15 @@ class DatabaseStorage {
       }
       where.push(`(${campos.join(" OR ")})`);
     }
-    const sql = `SELECT ${reqCols(escopo.pessoal)} ${REQ_JOINS}
-      ${where.length ? "WHERE " + where.join(" AND ") : ""}
-      ORDER BY r.updated_at DESC LIMIT 500`;
-    return q(sql, vals);
+    // Pedidos em aberto vêm sempre completos (nenhuma fila pode perder pedido);
+    // os finalizados vêm limitados aos LIMITE_FINAIS mais recentes.
+    const base = `SELECT ${reqCols(escopo.pessoal)} ${REQ_JOINS} WHERE ${where.length ? where.join(" AND ") : "TRUE"}`;
+    const iFinais = vals.length + 1;
+    const [abertos, finais] = await Promise.all([
+      q(`${base} AND NOT (r.status = ANY($${iFinais})) ORDER BY r.updated_at DESC`, [...vals, STATUS_FINAIS]),
+      q(`${base} AND r.status = ANY($${iFinais}) ORDER BY r.updated_at DESC LIMIT ${LIMITE_FINAIS}`, [...vals, STATUS_FINAIS])
+    ]);
+    return [...abertos, ...finais];
   }
 
   getTimeline(id) {
@@ -392,7 +410,7 @@ class DatabaseStorage {
   }
 
   // ---------------- Relatórios ----------------
-  async relatorios({ pessoal }) {
+  async relatorios({ pessoal, gestao }) {
     const [porStatus, porUnidade, porOperador, porMes, totais] = await Promise.all([
       q(`SELECT status, COUNT(*)::int AS total FROM requests GROUP BY status ORDER BY total DESC`),
       q(`SELECT comarca, vara_unidade AS "varaUnidade", COUNT(*)::int AS total FROM requests
@@ -401,10 +419,10 @@ class DatabaseStorage {
                 COUNT(DISTINCT e.request_id)::int AS pedidos
          FROM request_events e WHERE e.user_id IS NOT NULL
          GROUP BY e.user_name, e.user_role ORDER BY acoes DESC LIMIT 15`),
-      q(`SELECT to_char(created_at, 'YYYY-MM') AS mes, COUNT(*)::int AS total FROM requests
-         WHERE created_at >= date_trunc('year', NOW()) GROUP BY mes ORDER BY mes`),
+      q(`SELECT to_char(${LOCAL("created_at")}, 'YYYY-MM') AS mes, COUNT(*)::int AS total FROM requests
+         WHERE ${LOCAL("created_at")} >= date_trunc('year', ${AGORA_LOCAL}) GROUP BY mes ORDER BY mes`),
       one(`SELECT COUNT(*)::int AS total,
-                  COUNT(*) FILTER (WHERE created_at >= date_trunc('day', NOW()))::int AS hoje,
+                  COUNT(*) FILTER (WHERE ${LOCAL("created_at")} >= date_trunc('day', ${AGORA_LOCAL}))::int AS hoje,
                   COUNT(*) FILTER (WHERE status = 'arquivado')::int AS concluidos,
                   COUNT(*) FILTER (WHERE status IN ('nao_localizado','encerrado'))::int AS nao_localizados,
                   ROUND(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400)
@@ -415,7 +433,7 @@ class DatabaseStorage {
       ? await q(`SELECT nome_completo AS nome, oab, COUNT(*)::int AS total FROM requests
                  GROUP BY nome_completo, oab ORDER BY total DESC LIMIT 10`)
       : [];
-    return { totais, porStatus, porUnidade, porOperador, porMes, solicitantes };
+    return { totais, porStatus, porUnidade, porOperador: gestao ? porOperador : [], porMes, solicitantes };
   }
 }
 

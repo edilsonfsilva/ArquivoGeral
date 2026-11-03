@@ -1,13 +1,16 @@
-import { useDeferredValue, useState } from "react";
+import { useState } from "react";
 import { BarChart3, Users } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usePedidos } from "@/lib/painel";
-import { gerenciaUsuarios, veDadosPessoais } from "@shared/workflow.js";
+import { usePedidos, useDebounced } from "@/lib/painel";
+import { gerenciaUsuarios, veDadosPessoais, STATUS } from "@shared/workflow.js";
 import { ListaPedidos } from "./ListaPedidos";
 import { Filtros, FILTROS_VAZIOS } from "./Filtros";
 import { DetalhePedido } from "./DetalhePedido";
 import { Relatorios } from "./Relatorios";
 import { GestaoUsuarios } from "./GestaoUsuarios";
+
+// Mesmo limite do servidor (storage.LIMITE_FINAIS) para pedidos finalizados.
+const LIMITE_FINAIS = 300;
 
 /**
  * Tela de um setor: filas em abas (filtradas no cliente a partir da lista do escopo do perfil),
@@ -16,11 +19,12 @@ import { GestaoUsuarios } from "./GestaoUsuarios";
  */
 export function PainelSetor({ usuario, abas, abaInicial }) {
   const [filtros, setFiltros] = useState(FILTROS_VAZIOS);
-  const filtrosAdiados = useDeferredValue(filtros);
+  const filtrosAdiados = useDebounced(filtros);
   const [aberto, setAberto] = useState(null);
   const lista = usePedidos(filtrosAdiados);
   const pedidos = lista.data || [];
   const pessoal = veDadosPessoais(usuario.role);
+  const finais = pedidos.filter((r) => STATUS[r.status]?.final).length;
 
   const daAba = (aba) =>
     pedidos.filter((r) => (!aba.statuses || aba.statuses.includes(r.status)) && (!aba.filtro || aba.filtro(r, usuario)));
@@ -48,7 +52,12 @@ export function PainelSetor({ usuario, abas, abaInicial }) {
         {abas.map((a) => (
           <TabsContent key={a.id} value={a.id} className="space-y-3 mt-4">
             {a.ajuda && <p className="text-sm text-slate-600">{a.ajuda}</p>}
-            <Filtros filtros={filtros} onChange={setFiltros} pedidos={daAba(a)} mostrarSolicitante={pessoal} />
+            <Filtros filtros={filtros} onChange={setFiltros} pedidos={daAba(a)} todos={pedidos} mostrarSolicitante={pessoal} />
+            {finais >= LIMITE_FINAIS && (
+              <p className="text-xs text-amber-800 bg-amber-50 rounded p-2" role="status">
+                Pedidos finalizados: mostrando os {LIMITE_FINAIS} mais recentes. Use o filtro de período para ver os anteriores. Pedidos em aberto aparecem sempre.
+              </p>
+            )}
             <ListaPedidos
               pedidos={daAba(a)}
               carregando={lista.isLoading}
