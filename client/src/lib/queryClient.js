@@ -22,7 +22,8 @@ function friendlyMessage(err) {
 
 // Sessão expirada no painel: volta para o login.
 function handleUnauthorized(err) {
-  if (err?.status === 401 && window.location.pathname.startsWith("/admin/")) {
+  const interno = /^\/(admin\/|atendimento|busca|gerencia|certidao)/.test(window.location.pathname);
+  if (err?.status === 401 && interno) {
     queryClient.clear();
     window.location.assign("/admin");
     return true;

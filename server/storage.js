@@ -1,71 +1,142 @@
-import { randomInt } from "crypto";
-import { users, requests, observations } from "../shared/schema.js";
-import { db } from "./db.js";
-import { eq, desc, count } from "drizzle-orm";
+import { randomInt, randomBytes } from "crypto";
+import { pool } from "./db.js";
+import {
+  ACOES,
+  STATUS,
+  CERTIDAO_TIPOS,
+  verificarAcao,
+  podeSerResponsavelBusca,
+  certidoesDisponiveis
+} from "../shared/workflow.js";
 
-// Colunas devolvidas ao painel: tudo, exceto o conteúdo binário do anexo.
-const requestColumns = {
-  id: requests.id,
-  protocolId: requests.protocolId,
-  status: requests.status,
-  nomeCompleto: requests.nomeCompleto,
-  cpf: requests.cpf,
-  whatsapp: requests.whatsapp,
-  email: requests.email,
-  oab: requests.oab,
-  tipoNumeracao: requests.tipoNumeracao,
-  numeroProcesso: requests.numeroProcesso,
-  partes: requests.partes,
-  comarca: requests.comarca,
-  varaUnidade: requests.varaUnidade,
-  segredoJustica: requests.segredoJustica,
-  observacao: requests.observacao,
-  anexoName: requests.anexoName,
-  anexoSize: requests.anexoSize,
-  anexoType: requests.anexoType,
-  createdAt: requests.createdAt
-};
+// ------------------------------------------------------------------
+// Utilitários de SQL
+// ------------------------------------------------------------------
+const q = async (sql, params = [], client = pool) => (await client.query(sql, params)).rows;
+const one = async (sql, params, client) => (await q(sql, params, client))[0];
+
+async function tx(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const out = await fn(client);
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// Erro de regra de negócio com status HTTP (tratado em routes.js).
+export class RegraError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+    this.regra = true;
+  }
+}
+
+const USER_COLS = `id, name, email, password, role, matricula, ativo, created_at AS "createdAt"`;
+
+// Colunas do pedido. Dados pessoais de contato só para quem pode vê-los (P7).
+const REQ_BASE = `
+  r.id, r.protocol_id AS "protocolId", r.status, r.nome_completo AS "nomeCompleto",
+  r.tipo_numeracao AS "tipoNumeracao", r.numero_processo AS "numeroProcesso", r.partes,
+  r.comarca, r.vara_unidade AS "varaUnidade", r.segredo_justica AS "segredoJustica",
+  r.observacao, r.localizacao_fisica AS "localizacaoFisica", r.motivo,
+  r.atendimento_responsavel_id AS "atendimentoResponsavelId",
+  r.busca_responsavel_id AS "buscaResponsavelId",
+  r.arquivamento_responsavel_id AS "arquivamentoResponsavelId",
+  ua.name AS "atendimentoResponsavel", ub.name AS "buscaResponsavel", uc.name AS "arquivamentoResponsavel",
+  r.created_at AS "createdAt", r.updated_at AS "updatedAt"`;
+const REQ_PESSOAL = `,
+  r.cpf, r.whatsapp, r.email, r.oab,
+  r.anexo_name AS "anexoName", r.anexo_size AS "anexoSize", r.anexo_type AS "anexoType"`;
+const REQ_JOINS = `
+  FROM requests r
+  LEFT JOIN users ua ON ua.id = r.atendimento_responsavel_id
+  LEFT JOIN users ub ON ub.id = r.busca_responsavel_id
+  LEFT JOIN users uc ON uc.id = r.arquivamento_responsavel_id`;
+const reqCols = (pessoal) => REQ_BASE + (pessoal ? REQ_PESSOAL : "");
+
+const SOLICITANTE = { id: null, name: "Solicitante (formulário público)", role: "publico" };
 
 class DatabaseStorage {
-  async getUser(id) {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+  // ---------------- Usuários ----------------
+  getUser(id) {
+    return one(`SELECT ${USER_COLS} FROM users WHERE id = $1`, [id]);
   }
-  async getUserByEmail(email) {
-    const [user] = await db.select().from(users).where(eq(users.email, String(email).toLowerCase()));
-    return user;
+  getUserByEmail(email) {
+    return one(`SELECT ${USER_COLS} FROM users WHERE email = $1`, [String(email).toLowerCase()]);
   }
-  async createUser(user) {
-    const [created] = await db
-      .insert(users)
-      .values({ ...user, email: String(user.email).toLowerCase() })
-      .returning();
-    return created;
+  createUser({ name, email, password, role, matricula = null }) {
+    return one(
+      `INSERT INTO users (name, email, password, role, matricula) VALUES ($1, $2, $3, $4, $5) RETURNING ${USER_COLS}`,
+      [name, String(email).toLowerCase(), password, role, matricula]
+    );
   }
   async updateUser(id, data) {
-    const [updated] = await db.update(users).set(data).where(eq(users.id, id)).returning();
-    return updated;
+    const map = { name: "name", email: "email", password: "password", role: "role", matricula: "matricula", ativo: "ativo" };
+    const sets = [];
+    const vals = [];
+    for (const [k, col] of Object.entries(map)) {
+      if (data[k] !== undefined) {
+        vals.push(k === "email" ? String(data[k]).toLowerCase() : data[k]);
+        sets.push(`${col} = $${vals.length}`);
+      }
+    }
+    if (!sets.length) return this.getUser(id);
+    vals.push(id);
+    return one(`UPDATE users SET ${sets.join(", ")} WHERE id = $${vals.length} RETURNING ${USER_COLS}`, vals);
   }
-  async deleteUser(id) {
-    await db.delete(users).where(eq(users.id, id));
+  listUsers(roles) {
+    if (roles) return q(`SELECT ${USER_COLS} FROM users WHERE role = ANY($1) ORDER BY ativo DESC, name`, [roles]);
+    return q(`SELECT ${USER_COLS} FROM users ORDER BY ativo DESC, name`);
   }
-  async getAllUsers() {
-    return db.select().from(users);
+  async countAtivos(role) {
+    const row = await one(`SELECT COUNT(*)::int AS n FROM users WHERE role = $1 AND ativo`, [role]);
+    return row.n;
   }
-  async countAdmins() {
-    const [row] = await db.select({ n: count() }).from(users).where(eq(users.role, "admin"));
-    return Number(row?.n || 0);
-  }
+
+  // ---------------- Pedidos ----------------
   async createRequest(req) {
-    // Protocolo com gerador criptográfico; tenta de novo em caso de colisão.
     for (let attempt = 0; attempt < 5; attempt++) {
       const protocolId = `AG-${randomInt(100000, 1000000)}`;
       try {
-        const [created] = await db
-          .insert(requests)
-          .values({ ...req, protocolId })
-          .returning({ id: requests.id, protocolId: requests.protocolId, createdAt: requests.createdAt });
-        return created;
+        return await tx(async (c) => {
+          const created = await one(
+            `INSERT INTO requests (protocol_id, status, nome_completo, cpf, whatsapp, email, oab, tipo_numeracao,
+               numero_processo, partes, comarca, vara_unidade, segredo_justica, observacao,
+               anexo_name, anexo_size, anexo_type, anexo_data)
+             VALUES ($1,'solicitado',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+             RETURNING id, protocol_id AS "protocolId", created_at AS "createdAt"`,
+            [
+              protocolId,
+              req.nomeCompleto,
+              req.cpf,
+              req.whatsapp,
+              req.email,
+              req.oab ?? null,
+              req.tipoNumeracao,
+              req.numeroProcesso,
+              req.partes,
+              req.comarca,
+              req.varaUnidade,
+              req.segredoJustica,
+              req.observacao ?? null,
+              req.anexoName ?? null,
+              req.anexoSize ?? null,
+              req.anexoType ?? null,
+              req.anexoData ?? null
+            ],
+            c
+          );
+          await this.#evento(c, created.id, "solicitar", null, "solicitado", SOLICITANTE, null);
+          return created;
+        });
       } catch (err) {
         if (err?.code === "23505" && String(err?.constraint || "").includes("protocol")) continue;
         throw err;
@@ -73,92 +144,280 @@ class DatabaseStorage {
     }
     throw new Error("Não foi possível gerar um protocolo único");
   }
-  async getRequest(id) {
-    const [req] = await db.select(requestColumns).from(requests).where(eq(requests.id, id));
-    return req;
+
+  getRequest(id, { pessoal }) {
+    return one(`SELECT ${reqCols(pessoal)} ${REQ_JOINS} WHERE r.id = $1`, [id]);
   }
-  async getRequestAnexo(id) {
-    const [row] = await db
-      .select({ name: requests.anexoName, type: requests.anexoType, data: requests.anexoData })
-      .from(requests)
-      .where(eq(requests.id, id));
-    return row;
+
+  getRequestAnexo(id) {
+    return one(`SELECT anexo_name AS name, anexo_type AS type, anexo_data AS data FROM requests WHERE id = $1`, [id]);
   }
-  async getAllRequests() {
-    return db.select(requestColumns).from(requests).orderBy(desc(requests.createdAt));
+
+  /**
+   * Lista com escopo do perfil e filtros.
+   * escopo: { pessoal, excluirStatus?: [], responsavelId?: n }
+   */
+  listRequests(filtros = {}, escopo = {}) {
+    const where = [];
+    const vals = [];
+    const p = (v) => {
+      vals.push(v);
+      return `$${vals.length}`;
+    };
+    if (escopo.excluirStatus?.length) where.push(`NOT (r.status = ANY(${p(escopo.excluirStatus)}))`);
+    if (escopo.responsavelId) {
+      const me = p(escopo.responsavelId);
+      where.push(`(r.busca_responsavel_id = ${me} OR r.arquivamento_responsavel_id = ${me})`);
+    }
+    if (filtros.status) where.push(`r.status = ${p(filtros.status)}`);
+    if (filtros.comarca) where.push(`(r.comarca ILIKE ${p("%" + filtros.comarca + "%")} OR r.vara_unidade ILIKE $${vals.length})`);
+    if (filtros.operadorId) {
+      const op = p(filtros.operadorId);
+      where.push(`(r.atendimento_responsavel_id = ${op} OR r.busca_responsavel_id = ${op}
+        OR r.arquivamento_responsavel_id = ${op}
+        OR EXISTS (SELECT 1 FROM request_events e WHERE e.request_id = r.id AND e.user_id = ${op}))`);
+    }
+    if (filtros.de) where.push(`r.created_at >= ${p(filtros.de)}::date`);
+    if (filtros.ate) where.push(`r.created_at < (${p(filtros.ate)}::date + 1)`);
+    if (filtros.q) {
+      const like = p("%" + filtros.q + "%");
+      const campos = [`r.protocol_id ILIKE ${like}`, `r.numero_processo ILIKE ${like}`, `r.partes ILIKE ${like}`, `r.nome_completo ILIKE ${like}`];
+      if (escopo.pessoal) {
+        campos.push(`r.oab ILIKE ${like}`);
+        const digitos = filtros.q.replace(/\D/g, "");
+        if (digitos.length >= 3) campos.push(`regexp_replace(r.cpf, '\\D', '', 'g') LIKE ${p("%" + digitos + "%")}`);
+      }
+      where.push(`(${campos.join(" OR ")})`);
+    }
+    const sql = `SELECT ${reqCols(escopo.pessoal)} ${REQ_JOINS}
+      ${where.length ? "WHERE " + where.join(" AND ") : ""}
+      ORDER BY r.updated_at DESC LIMIT 500`;
+    return q(sql, vals);
   }
-  async updateRequest(id, data) {
-    const [updated] = await db.update(requests).set(data).where(eq(requests.id, id)).returning(requestColumns);
-    return updated;
+
+  getTimeline(id) {
+    return q(
+      `SELECT id, acao, status_de AS "statusDe", status_para AS "statusPara", user_name AS "userName",
+              user_role AS "userRole", nota, created_at AS "createdAt"
+       FROM request_events WHERE request_id = $1 ORDER BY created_at, id`,
+      [id]
+    );
   }
-  async deleteRequest(id) {
-    await db.delete(observations).where(eq(observations.requestId, id));
-    await db.delete(requests).where(eq(requests.id, id));
+
+  async #evento(c, requestId, acao, de, para, user, nota) {
+    await q(
+      `INSERT INTO request_events (request_id, acao, status_de, status_para, user_id, user_name, user_role, nota)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [requestId, acao, de, para, user.id, user.name, user.role, nota],
+      c
+    );
   }
-  async getObservationsByRequest(requestId) {
-    return db
-      .select()
-      .from(observations)
-      .where(eq(observations.requestId, requestId))
-      .orderBy(desc(observations.createdAt));
-  }
-  async createObservation(obs) {
-    const [created] = await db.insert(observations).values(obs).returning();
-    return created;
-  }
-  async getDashboardStats() {
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfWeek = new Date(startOfDay);
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-    const allReqs = await db
-      .select({ createdAt: requests.createdAt, status: requests.status, nomeCompleto: requests.nomeCompleto })
-      .from(requests);
-    const today = allReqs.filter((r) => r.createdAt >= startOfDay).length;
-    const week = allReqs.filter((r) => r.createdAt >= startOfWeek).length;
-    const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    // Só o ano corrente, para não somar meses de anos diferentes.
-    const monthMap = {};
-    allReqs
-      .filter((r) => r.createdAt.getFullYear() === now.getFullYear())
-      .forEach((r) => {
-        const key = months[r.createdAt.getMonth()];
-        monthMap[key] = (monthMap[key] || 0) + 1;
-      });
-    const byMonth = months.map((m) => ({ month: m, count: monthMap[m] || 0 }));
-    const hourMap = {};
-    allReqs.forEach((r) => {
-      const h = `${String(r.createdAt.getHours()).padStart(2, "0")}h`;
-      hourMap[h] = (hourMap[h] || 0) + 1;
+
+  /** Executa uma ação do fluxo com trava de linha (duas pessoas ao mesmo tempo → a segunda recebe 409). */
+  aplicarAcao(id, acaoKey, user, dados) {
+    return tx(async (c) => {
+      const atual = await one(
+        `SELECT id, status, busca_responsavel_id AS "buscaResponsavelId",
+                arquivamento_responsavel_id AS "arquivamentoResponsavelId"
+         FROM requests WHERE id = $1 FOR UPDATE`,
+        [id],
+        c
+      );
+      if (!atual) throw new RegraError(404, "Pedido não encontrado");
+      const erro = verificarAcao(user.role, acaoKey, atual, user.id, dados);
+      if (erro) {
+        const status = /perfil|atribuído/.test(erro) ? 403 : /etapa/.test(erro) ? 409 : 400;
+        throw new RegraError(status, erro);
+      }
+      const acao = ACOES[acaoKey];
+      const sets = ["status = $1", "updated_at = NOW()"];
+      const vals = [acao.para];
+      const set = (col, v) => {
+        vals.push(v);
+        sets.push(`${col} = $${vals.length}`);
+      };
+      let nota = dados.nota || null;
+
+      if (dados.responsavelId && acao.exige.includes("responsavelId")) {
+        const resp = await one(`SELECT id, name, role, ativo FROM users WHERE id = $1`, [dados.responsavelId], c);
+        if (!resp || !resp.ativo || !podeSerResponsavelBusca(resp.role)) {
+          throw new RegraError(400, "Responsável inválido: escolha um usuário ativo da Busca");
+        }
+        set(acaoKey === "atribuir_busca" ? "busca_responsavel_id" : "arquivamento_responsavel_id", resp.id);
+        nota = `Responsável: ${resp.name}${nota ? " — " + nota : ""}`;
+      }
+      if (acaoKey === "encaminhar_busca" || acaoKey === "indeferir") set("atendimento_responsavel_id", user.id);
+      if (acaoKey === "indeferir" || acaoKey === "nao_localizar") set("motivo", dados.nota);
+      if (acaoKey === "registrar_devolucao") {
+        // P3: sugere para o arquivamento quem fez a busca.
+        sets.push("arquivamento_responsavel_id = COALESCE(arquivamento_responsavel_id, busca_responsavel_id)");
+      }
+      if (dados.localizacao && (acaoKey === "localizar" || acaoKey === "arquivar")) {
+        set("localizacao_fisica", dados.localizacao);
+        nota = `Localização: ${dados.localizacao}${nota ? " — " + nota : ""}`;
+      }
+      vals.push(id, atual.status);
+      await q(
+        `UPDATE requests SET ${sets.join(", ")} WHERE id = $${vals.length - 1} AND status = $${vals.length}`,
+        vals,
+        c
+      );
+      await this.#evento(c, id, acaoKey, atual.status, acao.para, user, nota);
+      return { id, status: acao.para };
     });
-    const byHour = ["08h", "09h", "10h", "11h", "12h", "13h", "14h", "15h", "16h", "17h", "18h"].map((h) => ({
-      hour: h,
-      count: hourMap[h] || 0
-    }));
-    const requesterMap = {};
-    allReqs.forEach((r) => {
-      requesterMap[r.nomeCompleto] = (requesterMap[r.nomeCompleto] || 0) + 1;
+  }
+
+  // ---------------- Observações ----------------
+  getObservationsByRequest(requestId) {
+    return q(
+      `SELECT id, request_id AS "requestId", text, author_name AS "authorName", author_role AS "authorRole",
+              created_at AS "createdAt"
+       FROM observations WHERE request_id = $1 ORDER BY created_at DESC`,
+      [requestId]
+    );
+  }
+  createObservation({ requestId, text, authorName, authorRole }) {
+    return one(
+      `INSERT INTO observations (request_id, text, author_name, author_role) VALUES ($1,$2,$3,$4)
+       RETURNING id, request_id AS "requestId", text, author_name AS "authorName", author_role AS "authorRole",
+                 created_at AS "createdAt"`,
+      [requestId, text, authorName, authorRole]
+    );
+  }
+
+  // ---------------- Certidões ----------------
+  emitirCertidao(requestId, tipo, user) {
+    return tx(async (c) => {
+      const r = await one(`SELECT ${reqCols(true)} ${REQ_JOINS} WHERE r.id = $1 FOR UPDATE OF r`, [requestId], c);
+      if (!r) throw new RegraError(404, "Pedido não encontrado");
+      if (!certidoesDisponiveis(r.status).includes(tipo)) {
+        throw new RegraError(409, "Esta certidão não pode ser emitida nesta etapa do pedido");
+      }
+      const eventos = await q(
+        `SELECT acao, status_para AS "statusPara", created_at AS "createdAt" FROM request_events
+         WHERE request_id = $1 ORDER BY created_at, id`,
+        [requestId],
+        c
+      );
+      const quando = (acao) => eventos.filter((e) => e.acao === acao).at(-1)?.createdAt ?? null;
+      const seq = await one(`SELECT nextval('certidao_seq')::int AS n`, [], c);
+      const ano = new Date().getFullYear();
+      const numero = `CERT-${ano}-${String(seq.n).padStart(6, "0")}`;
+      const codigo = randomBytes(9).toString("base64url").toUpperCase().replace(/[^A-Z0-9]/g, "X").slice(0, 12);
+      const dados = {
+        tipo,
+        titulo: CERTIDAO_TIPOS[tipo].label,
+        texto: CERTIDAO_TIPOS[tipo].texto,
+        protocolo: r.protocolId,
+        numeroProcesso: r.numeroProcesso,
+        tipoNumeracao: r.tipoNumeracao,
+        partes: r.partes,
+        comarca: r.comarca,
+        varaUnidade: r.varaUnidade,
+        requerente: r.nomeCompleto,
+        situacao: STATUS[r.status].label,
+        motivo: tipo === "nao_localizacao" ? r.motivo : null,
+        localizacaoFisica: tipo === "arquivamento" ? r.localizacaoFisica : null,
+        datas: {
+          solicitacao: r.createdAt,
+          localizacao: quando("localizar"),
+          naoLocalizacao: quando("nao_localizar"),
+          disponibilizacao: quando("receber"),
+          arquivamento: quando("arquivar")
+        },
+        servidor: { nome: user.name, matricula: user.matricula || "—" }
+      };
+      const cert = await one(
+        `INSERT INTO certidoes (request_id, tipo, numero, codigo_verificacao, emitida_por, dados)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         RETURNING id, tipo, numero, codigo_verificacao AS "codigo", emitida_em AS "emitidaEm"`,
+        [requestId, tipo, numero, codigo, user.id, dados],
+        c
+      );
+      await this.#evento(c, requestId, "emitir_certidao", r.status, r.status, user, `${dados.titulo} ${numero}`);
+      return cert;
     });
-    const topRequesters = Object.entries(requesterMap)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, count2]) => ({ name, count: count2 }));
-    const allObs = await db.select({ authorName: observations.authorName }).from(observations);
-    const attendantMap = {};
-    allObs.forEach((o) => {
-      attendantMap[o.authorName] = (attendantMap[o.authorName] || 0) + 1;
-    });
-    const topAttendants = Object.entries(attendantMap)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, count2]) => ({ name, count: count2 }));
-    const statusMap = {};
-    allReqs.forEach((r) => {
-      statusMap[r.status] = (statusMap[r.status] || 0) + 1;
-    });
-    const byStatus = Object.entries(statusMap).map(([status, count2]) => ({ status, count: count2 }));
-    return { today, week, byMonth, byHour, topRequesters, topAttendants, byStatus };
+  }
+  listCertidoes(requestId) {
+    return q(
+      `SELECT c.id, c.tipo, c.numero, c.codigo_verificacao AS "codigo", c.emitida_em AS "emitidaEm", u.name AS "emitidaPor"
+       FROM certidoes c LEFT JOIN users u ON u.id = c.emitida_por WHERE c.request_id = $1 ORDER BY c.emitida_em DESC`,
+      [requestId]
+    );
+  }
+  getCertidao(id) {
+    return one(
+      `SELECT id, request_id AS "requestId", tipo, numero, codigo_verificacao AS "codigo", dados, emitida_em AS "emitidaEm"
+       FROM certidoes WHERE id = $1`,
+      [id]
+    );
+  }
+  getCertidaoByCodigo(codigo) {
+    return one(
+      `SELECT tipo, numero, codigo_verificacao AS "codigo", dados, emitida_em AS "emitidaEm"
+       FROM certidoes WHERE codigo_verificacao = $1`,
+      [codigo]
+    );
+  }
+
+  // ---------------- Consulta pública ----------------
+  async consultaPublica(protocolo, cpfDigitos) {
+    const r = await one(
+      `SELECT id, protocol_id AS "protocolId", status, numero_processo AS "numeroProcesso",
+              created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM requests WHERE protocol_id = $1 AND regexp_replace(cpf, '\\D', '', 'g') = $2`,
+      [protocolo, cpfDigitos]
+    );
+    if (!r) return null;
+    const eventos = await q(
+      `SELECT status_para AS "status", created_at AS "createdAt" FROM request_events
+       WHERE request_id = $1 AND status_de IS DISTINCT FROM status_para ORDER BY created_at, id`,
+      [r.id]
+    );
+    // Só rótulos públicos e datas: sem nomes de servidores nem notas internas.
+    const linha = [];
+    for (const e of eventos) {
+      const publico = STATUS[e.status]?.publico;
+      if (publico && linha.at(-1)?.situacao !== publico) linha.push({ situacao: publico, data: e.createdAt });
+    }
+    return {
+      protocolo: r.protocolId,
+      numeroProcesso: r.numeroProcesso,
+      situacao: STATUS[r.status]?.publico,
+      final: !!STATUS[r.status]?.final,
+      solicitadoEm: r.createdAt,
+      atualizadoEm: r.updatedAt,
+      historico: linha
+    };
+  }
+
+  // ---------------- Relatórios ----------------
+  async relatorios({ pessoal }) {
+    const [porStatus, porUnidade, porOperador, porMes, totais] = await Promise.all([
+      q(`SELECT status, COUNT(*)::int AS total FROM requests GROUP BY status ORDER BY total DESC`),
+      q(`SELECT comarca, vara_unidade AS "varaUnidade", COUNT(*)::int AS total FROM requests
+         GROUP BY comarca, vara_unidade ORDER BY total DESC LIMIT 10`),
+      q(`SELECT e.user_name AS nome, e.user_role AS role, COUNT(*)::int AS acoes,
+                COUNT(DISTINCT e.request_id)::int AS pedidos
+         FROM request_events e WHERE e.user_id IS NOT NULL
+         GROUP BY e.user_name, e.user_role ORDER BY acoes DESC LIMIT 15`),
+      q(`SELECT to_char(created_at, 'YYYY-MM') AS mes, COUNT(*)::int AS total FROM requests
+         WHERE created_at >= date_trunc('year', NOW()) GROUP BY mes ORDER BY mes`),
+      one(`SELECT COUNT(*)::int AS total,
+                  COUNT(*) FILTER (WHERE created_at >= date_trunc('day', NOW()))::int AS hoje,
+                  COUNT(*) FILTER (WHERE status = 'arquivado')::int AS concluidos,
+                  COUNT(*) FILTER (WHERE status IN ('nao_localizado','encerrado'))::int AS nao_localizados,
+                  ROUND(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 86400)
+                        FILTER (WHERE status = 'arquivado')::numeric, 1)::float AS dias_ciclo
+           FROM requests`)
+    ]);
+    const solicitantes = pessoal
+      ? await q(`SELECT nome_completo AS nome, oab, COUNT(*)::int AS total FROM requests
+                 GROUP BY nome_completo, oab ORDER BY total DESC LIMIT 10`)
+      : [];
+    return { totais, porStatus, porUnidade, porOperador, porMes, solicitantes };
   }
 }
+
 const storage = new DatabaseStorage();
 export { DatabaseStorage, storage };

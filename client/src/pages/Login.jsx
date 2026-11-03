@@ -19,7 +19,7 @@ function Login() {
     onSuccess: (user) => {
       queryClient.setQueryData(["/api/auth/me"], user);
       toast({ title: "Login realizado com sucesso", description: "Bem-vindo ao painel." });
-      setLocation("/admin/painel");
+      setLocation(user.tela || "/admin/painel");
     },
     onError: () => {
       toast({ title: "Credenciais inv\xE1lidas", description: "E-mail ou senha incorretos.", variant: "destructive" });
@@ -37,7 +37,7 @@ function Login() {
           </div>
           <CardTitle className="text-2xl font-serif text-slate-900">Acesso Restrito</CardTitle>
           <CardDescription className="text-base">
-            Arquivo Geral do TJPE
+            Arquivo Geral do TJPE — Atendimento, Busca e Gerência
           </CardDescription>
         </CardHeader>
         <CardContent>

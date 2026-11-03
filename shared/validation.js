@@ -1,10 +1,9 @@
 import { z } from "zod";
+import { ROLE_KEYS, ACAO_KEYS, CERTIDAO_KEYS, STATUS_KEYS } from "./workflow.js";
 
 // ------------------------------------------------------------------
 // Constantes de domínio
 // ------------------------------------------------------------------
-export const STATUS = ["novo", "em_analise", "aprovado", "indeferido"];
-export const ROLES = ["admin", "atendente"];
 export const MAX_FILE_MB = 5;
 export const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
 export const ACCEPTED_FILE_TYPES = ["application/pdf", "image/png", "image/jpeg"];
@@ -98,15 +97,41 @@ export const publicRequestSchema = z
   .strict()
   .superRefine(npuRefine);
 
-// Edição pelo administrador: só campos de negócio, nunca protocolo/data/anexo.
-export const adminUpdateRequestSchema = z
+// Ação do fluxo (a permissão e os dados exigidos são conferidos em shared/workflow.js).
+export const acaoSchema = z
   .object({
-    ...Object.fromEntries(Object.entries(requestFields).map(([k, v]) => [k, v.optional()])),
-    status: z.enum(STATUS).optional()
+    acao: z.enum(ACAO_KEYS),
+    nota: opcional(1000),
+    responsavelId: z.number().int().positive().optional().nullable(),
+    localizacao: opcional(200)
   })
   .strict();
 
-export const statusUpdateSchema = z.object({ status: z.enum(STATUS) }).strict();
+export const certidaoSchema = z.object({ tipo: z.enum(CERTIDAO_KEYS) }).strict();
+
+// Consulta pública do andamento: protocolo + CPF do solicitante.
+export const consultaSchema = z
+  .object({
+    protocolo: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^AG-\d{6}$/, "Protocolo no formato AG-000000"),
+    cpf: z.string().trim().refine(isValidCpf, "CPF inválido")
+  })
+  .strict();
+
+// Filtros da listagem interna (query string).
+export const listFiltersSchema = z
+  .object({
+    status: z.union([z.enum(STATUS_KEYS), z.literal("")]).optional(),
+    q: z.string().trim().max(100).optional(),
+    comarca: z.string().trim().max(120).optional(),
+    operadorId: z.coerce.number().int().positive().optional(),
+    de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+  })
+  .strip();
 
 export const observationSchema = z.object({ text: texto(1, 2000, "Observação vazia") }).strict();
 
@@ -115,12 +140,15 @@ const senha = z
   .min(10, "A senha deve ter pelo menos 10 caracteres")
   .max(128, "Senha muito longa");
 
+const matricula = z.string().trim().min(1, "Matrícula é obrigatória").max(30);
+
 export const createUserSchema = z
   .object({
     name: texto(2, 120, "Nome é obrigatório"),
     email: z.string().trim().toLowerCase().max(254).email("E-mail inválido"),
+    matricula,
     password: senha,
-    role: z.enum(ROLES).default("atendente")
+    role: z.enum(ROLE_KEYS)
   })
   .strict();
 
@@ -128,8 +156,10 @@ export const updateUserSchema = z
   .object({
     name: texto(2, 120, "Nome é obrigatório").optional(),
     email: z.string().trim().toLowerCase().max(254).email("E-mail inválido").optional(),
+    matricula: matricula.optional(),
     password: z.union([senha, z.literal("")]).optional(),
-    role: z.enum(ROLES).optional()
+    role: z.enum(ROLE_KEYS).optional(),
+    ativo: z.boolean().optional()
   })
   .strict();
 

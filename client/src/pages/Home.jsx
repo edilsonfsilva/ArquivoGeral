@@ -162,6 +162,11 @@ function Home() {
     >
                     <Copy className="h-4 w-4" aria-hidden="true" /> Copiar protocolo
                   </Button>
+                  <p>
+                    <Link href={`/consulta?protocolo=${protocolId}`} className="text-primary font-medium hover:underline">
+                      Acompanhe o andamento do pedido →
+                    </Link>
+                  </p>
                 </div>
               </CardContent>
               <CardFooter>
@@ -193,6 +198,12 @@ function Home() {
             </h1>
             <p className="text-slate-600 text-lg">
               Preencha o formulário abaixo para solicitar desarquivamento ou consulta de processos.
+            </p>
+            <p className="text-sm">
+              Já fez um pedido?{" "}
+              <Link href="/consulta" className="text-primary font-medium hover:underline">
+                Acompanhe pelo protocolo
+              </Link>
             </p>
           </div>
 

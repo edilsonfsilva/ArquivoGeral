@@ -10,6 +10,11 @@ const httpServer = createServer(app);
 const isProd = process.env.NODE_ENV === "production";
 
 app.disable("x-powered-by");
+// Protótipo: não indexar em buscadores.
+app.use((_req, res, next) => {
+  res.setHeader("X-Robots-Tag", "noindex, nofollow");
+  next();
+});
 // Atrás do proxy (Traefik/Nginx): IP real do cliente e cookie Secure funcionam.
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
 
@@ -25,7 +30,8 @@ app.use(
             "frame-ancestors": ["'none'"],
             "form-action": ["'self'"],
             "script-src": ["'self'"],
-            "style-src": ["'self'", "https://fonts.googleapis.com"],
+            // 'unsafe-inline' só para estilos: o Radix injeta <style> ao travar a rolagem de diálogos. Scripts seguem restritos.
+            "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
             "img-src": ["'self'", "data:", "blob:"],
             "connect-src": ["'self'"],
