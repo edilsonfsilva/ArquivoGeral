@@ -89,13 +89,14 @@ export const ACOES = {
     exige: []
   },
   encerrar: { label: "Parte avisada — encerrar", de: ["nao_localizado"], para: "encerrado", perfis: ATEND, exige: [] },
-  // A Busca pode tentar de novo um processo não localizado (enquanto o Atendimento não encerrar).
-  // Volta para "em busca" com o mesmo responsável; chefe/servidor podem reatribuir depois.
+  // Processo não localizado pode ser procurado de novo, sem limite de tentativas, enquanto não for encerrado.
+  // Quem pede: a própria Busca ou o Atendimento (a pedido da parte). Volta para "em busca" com o mesmo
+  // responsável; chefe/servidor da Busca podem reatribuir depois.
   nova_busca: {
-    label: "Fazer nova busca",
+    label: "Nova busca",
     de: ["nao_localizado"],
     para: "em_busca",
-    perfis: BUSCA,
+    perfis: [...BUSCA, ...ATEND],
     exige: [],
     responsavel: "buscaResponsavelId"
   },

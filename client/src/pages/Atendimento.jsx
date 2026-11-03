@@ -28,7 +28,7 @@ const ABAS = [
     id: "nao_localizados",
     label: "Não localizados",
     statuses: ["nao_localizado"],
-    ajuda: "A Busca não encontrou o processo. Até o encerramento, a Busca ainda pode fazer uma nova busca; quando decidir encerrar, avise a parte (e emita a certidão, se pedida)."
+    ajuda: "A Busca não encontrou o processo. Solicite uma nova busca (sem limite de tentativas) ou, se a parte desistir, avise-a, emita a certidão se pedida e encerre."
   },
   {
     id: "na_busca",

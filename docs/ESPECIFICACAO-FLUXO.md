@@ -16,7 +16,7 @@ flowchart LR
     AB -->|Busca chefe/servidor: atribuir| EB[em_busca]
     EB -->|responsável: localizado| LOC[localizado<br/>a caminho do Atendimento]
     EB -->|responsável: não localizado + motivo| NL[nao_localizado]
-    NL -->|Busca: nova busca| EB
+    NL -->|Busca ou Atendimento: nova busca| EB
     NL -->|Atendimento: parte avisada| ENC([encerrado])
     LOC -->|Atendimento: confirmou recebimento| DISP[disponivel]
     DISP -->|Atendimento: entregue à parte| CONS[em_consulta]
@@ -41,7 +41,7 @@ flowchart LR
 | `encerrado` | — (fim) | Encerrado — processo não localizado |
 | `arquivado` | — (fim) | Concluído — processo rearquivado |
 
-**Nova busca.** Um processo **não localizado** pode voltar a ser procurado pela Busca enquanto o Atendimento ainda não encerrou o pedido. Ele volta para `em_busca` com o mesmo responsável (chefe e servidor podem reatribuir); a tentativa anterior e o motivo ficam registrados na linha do tempo. Depois de `encerrado`, não há nova busca: a parte faz um novo pedido.
+**Nova busca.** Um processo **não localizado** pode voltar a ser procurado, **sem limite de tentativas**, enquanto o pedido não for encerrado. A nova busca pode ser feita pela própria Busca ou **solicitada pelo Atendimento** (por exemplo, quando a parte traz novas informações). Ele volta para `em_busca` com o mesmo responsável (chefe e servidor podem reatribuir); a tentativa anterior e o motivo ficam registrados na linha do tempo. Depois de `encerrado`, não há nova busca: a parte faz um novo pedido.
 
 A tabela de transições existe em um único arquivo (`shared/workflow.js`), usado tanto pelo servidor quanto pela interface. O servidor só aplica uma ação se o pedido estiver na etapa esperada; duas pessoas agindo ao mesmo tempo no mesmo pedido → a segunda recebe aviso de que a etapa mudou.
 
@@ -67,7 +67,7 @@ A tabela de transições existe em um único arquivo (`shared/workflow.js`), usa
 | Emitir certidão | – | ✔ | ✔ | – | – | – | – |
 | Atribuir responsável (busca ou arquivamento) | – | – | – | – | ✔ | ✔ | – |
 | Localizado / não localizado / arquivado | – | – | – | só os seus | ✔ | ✔ | – |
-| Nova busca de processo não localizado | – | – | – | só os seus | ✔ | ✔ | – |
+| Nova busca de processo não localizado | ✔ | ✔ | ✔ | só os seus | ✔ | ✔ | – |
 | Cadastrar e desativar usuários | – | – | do Atend. | – | – | da Busca | chefes; desativa todos |
 | Indicadores | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ (com solicitantes) |
 
@@ -146,7 +146,7 @@ Cada certidão tem número sequencial (`CERT-AAAA-NNNNNN`), código de verifica�
 | Q3 | No rearquivamento, deve ser a mesma pessoa que fez a busca? | Sugere a mesma pessoa; chefe/servidor podem trocar. |
 | Q4 | Operadores do Atendimento devem poder emitir certidão? | Não; só servidor e chefe. |
 | Q5 | O Gerente deve poder executar etapas do fluxo (substituição)? | Não; só acompanha e administra usuários. |
-| Q6 | Quando o processo não é localizado, há nova tentativa de busca? | **Definido (02/11/2026): sim.** A Busca pode fazer nova busca até o Atendimento encerrar. A validar: limite de tentativas e se o Atendimento também pode solicitar nova busca. |
+| Q6 | Quando o processo não é localizado, há nova tentativa de busca? | **Definido (02/11/2026):** sim, sem limite de tentativas; a Busca pode fazer e o Atendimento pode solicitar nova busca, até o pedido ser encerrado. |
 | Q7 | Se a parte não comparece, qual o prazo para devolver o processo ao arquivo? | Sem prazo; o Atendimento pode enviar para rearquivamento a qualquer momento a partir de "disponível". |
 | Q8 | O texto das três certidões está adequado? Faltam tipos (ex.: certidão narrativa)? | Três modelos fixos. |
 | Q9 | Processos em segredo de justiça exigem regra extra (ex.: só advogado habilitado)? | Apenas sinalizados; sem regra específica. |
@@ -156,4 +156,4 @@ Cada certidão tem número sequencial (`CERT-AAAA-NNNNNN`), código de verifica�
 
 - Regras do fluxo e permissões: `shared/workflow.js` (com 1.058 testes automatizados perfil × ação × etapa em `tests/workflow.test.js`).
 - API: `server/routes.js` (rotas e escopo por perfil) e `server/storage.js` (SQL, transações e trilha).
-- Teste de ponta a ponta da API em `tests/e2e/` (79 verificações: ciclo completo, não localização com nova busca, indeferimento, permissões negadas, concorrência, consulta pública, gestão de usuários) e regressão da auditoria (31 verificações).
+- Teste de ponta a ponta da API em `tests/e2e/` (81 verificações: ciclo completo, não localização com novas buscas pela Busca e pelo Atendimento, indeferimento, permissões negadas, concorrência, consulta pública, gestão de usuários) e regressão da auditoria (31 verificações).

@@ -55,7 +55,7 @@ const PERFIS_ESPERADOS = {
   localizar: BUSCA,
   nao_localizar: BUSCA,
   arquivar: BUSCA,
-  nova_busca: BUSCA
+  nova_busca: [...BUSCA, ...ATEND]
 };
 
 // Dados mínimos exigidos por ação, para os testes passarem a validação.
@@ -151,6 +151,11 @@ describe("nova busca de processo não localizado", () => {
     assert.equal(podeExecutar("chefe_busca", "nova_busca", pedidoEm("nao_localizado", { buscaResponsavelId: 99 }), 1), true);
     assert.equal(podeExecutar("servidor_busca", "nova_busca", pedidoEm("nao_localizado", { buscaResponsavelId: 99 }), 1), true);
   });
+  test("sem limite de tentativas: a mesma ação vale a cada não localização", () => {
+    const p = pedidoEm("nao_localizado", { tentativas: 50 });
+    assert.equal(podeExecutar("servidor_atendimento", "nova_busca", p, 1), true);
+    assert.equal(podeExecutar("chefe_busca", "nova_busca", p, 1), true);
+  });
   test("operador só reabre a busca que era dele", () => {
     assert.equal(podeExecutar("operador_busca", "nova_busca", pedidoEm("nao_localizado"), 7), true);
     assert.equal(podeExecutar("operador_busca", "nova_busca", pedidoEm("nao_localizado", { buscaResponsavelId: 99 }), 7), false);
@@ -158,8 +163,8 @@ describe("nova busca de processo não localizado", () => {
   test("depois de encerrado pelo Atendimento não há nova busca", () => {
     for (const r of TODOS) assert.equal(podeExecutar(r, "nova_busca", pedidoEm("encerrado"), 7), false);
   });
-  test("Atendimento vê encerrar; Busca vê nova busca", () => {
-    assert.deepEqual(acoesDisponiveis("operador_atendimento", pedidoEm("nao_localizado"), 1), ["encerrar"]);
+  test("Atendimento pode solicitar nova busca ou encerrar; Busca vê nova busca", () => {
+    assert.deepEqual(acoesDisponiveis("operador_atendimento", pedidoEm("nao_localizado"), 1).sort(), ["encerrar", "nova_busca"]);
     assert.deepEqual(acoesDisponiveis("servidor_busca", pedidoEm("nao_localizado"), 1), ["nova_busca"]);
   });
 });

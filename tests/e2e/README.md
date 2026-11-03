@@ -6,7 +6,7 @@ Rodam contra um servidor em execução (local ou publicado). As contas ficam num
 # 1. Cria uma conta de demonstração por perfil (idempotente). gerente.json: {"ADMIN_EMAIL": "...", "ADMIN_PASSWORD": "..."}
 node tests/e2e/demo-setup.cjs https://servidor gerente.json contas.json
 
-# 2. Fluxo completo, permissões e concorrência (79 verificações; apaga os pedidos de teste no final)
+# 2. Fluxo completo, permissões e concorrência (81 verificações; apaga os pedidos de teste no final)
 node tests/e2e/fluxo.cjs https://servidor contas.json
 
 # 3. Regressão da auditoria de segurança (31 verificações)

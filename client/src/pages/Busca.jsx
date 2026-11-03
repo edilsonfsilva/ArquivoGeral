@@ -20,7 +20,7 @@ const ABAS_GESTAO = [
     id: "nao_localizados",
     label: "Não localizados",
     statuses: ["nao_localizado"],
-    ajuda: "Processos não encontrados. Enquanto o Atendimento não encerrar o pedido, é possível fazer uma nova busca.",
+    ajuda: "Processos não encontrados. Enquanto o pedido não for encerrado, a Busca pode fazer nova busca (o Atendimento também pode solicitar), sem limite de tentativas.",
     vazio: "Nenhum processo não localizado em aberto."
   },
   {

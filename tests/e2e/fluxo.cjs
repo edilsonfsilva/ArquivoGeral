@@ -144,13 +144,18 @@ const pedidoBase = (cpf) => ({
   ok(r.status === 200 && r.json.status === "nao_localizado", "Busca informa não localizado");
   // Nova busca (pedido do usuário): a Busca reabre a procura antes do encerramento.
   ok([403, 404].includes((await acao("operador_busca", B.id, { acao: "nova_busca" })).status), "Outro operador não reabre a busca alheia");
-  ok((await acao("operador_atendimento", B.id, { acao: "nova_busca" })).status === 403, "Atendimento não executa nova busca");
   r = await acao("chefe_busca", B.id, { acao: "nova_busca", nota: "Verificar também o galpão 3" });
   ok(r.status === 200 && r.json.status === "em_busca", "Busca faz nova busca do processo não localizado");
   d = await detalhe("chefe_busca", B.id);
   ok(d.json?.buscaResponsavelId === idOp2 && d.json?.motivo === null, "Nova busca mantém o responsável e limpa o motivo anterior");
   r = await acao("operador_busca_2", B.id, { acao: "nao_localizar", nota: "Também não encontrado no galpão 3" });
   ok(r.status === 200 && r.json.status === "nao_localizado", "Segunda tentativa registrada como não localizado");
+  r = await acao("operador_atendimento", B.id, { acao: "nova_busca", nota: "Parte trouxe o número antigo do processo" });
+  ok(r.status === 200 && r.json.status === "em_busca", "Atendimento solicita nova busca (terceira tentativa)");
+  r = await acao("operador_busca_2", B.id, { acao: "nao_localizar", nota: "Não encontrado pelo número antigo" });
+  ok(r.status === 200 && r.json.status === "nao_localizado", "Terceira tentativa registrada (sem limite de tentativas)");
+  d = await detalhe("operador_atendimento", B.id);
+  ok(d.json?.timeline?.filter((e) => e.acao === "nova_busca").length === 2, "Linha do tempo registra cada nova busca");
   const cert3 = await call("POST", `/api/requests/${B.id}/certidoes`, { cookie: ck("servidor_atendimento"), body: { tipo: "nao_localizacao" } });
   ok(cert3.status === 201, "Certidão de não localização");
   r = await acao("operador_atendimento", B.id, { acao: "encerrar" });
