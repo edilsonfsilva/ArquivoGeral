@@ -266,6 +266,8 @@ class DatabaseStorage {
       }
       if (acaoKey === "encaminhar_busca" || acaoKey === "indeferir") set("atendimento_responsavel_id", user.id);
       if (acaoKey === "indeferir" || acaoKey === "nao_localizar") set("motivo", dados.nota);
+      // Nova busca: o motivo da não localização anterior fica só na linha do tempo.
+      if (acaoKey === "nova_busca") sets.push("motivo = NULL");
       if (acaoKey === "registrar_devolucao") {
         // P3: sugere para o arquivamento quem fez a busca.
         sets.push("arquivamento_responsavel_id = COALESCE(arquivamento_responsavel_id, busca_responsavel_id)");

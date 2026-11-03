@@ -17,10 +17,17 @@ const ABAS_GESTAO = [
   { id: "minhas", label: "Minhas tarefas", filtro: minha, vazio: "Nenhuma tarefa atribuída a você." },
   { id: "andamento", label: "Em andamento", statuses: ["em_busca", "em_arquivamento"], ajuda: "Todas as buscas e arquivamentos em execução." },
   {
+    id: "nao_localizados",
+    label: "Não localizados",
+    statuses: ["nao_localizado"],
+    ajuda: "Processos não encontrados. Enquanto o Atendimento não encerrar o pedido, é possível fazer uma nova busca.",
+    vazio: "Nenhum processo não localizado em aberto."
+  },
+  {
     id: "concluidos",
     label: "Concluídos",
-    statuses: ["localizado", "disponivel", "em_consulta", "nao_localizado", "encerrado", "arquivado"],
-    ajuda: "Processos já entregues ao Atendimento, não localizados ou rearquivados."
+    statuses: ["localizado", "disponivel", "em_consulta", "encerrado", "arquivado"],
+    ajuda: "Processos já entregues ao Atendimento, encerrados como não localizados ou rearquivados."
   }
 ];
 
@@ -29,7 +36,7 @@ const ABAS_OPERADOR = [
     id: "minhas",
     label: "Minhas tarefas",
     filtro: minha,
-    ajuda: "Localize o processo e envie ao Atendimento (ou informe que não foi localizado); nos devolvidos, registre o arquivamento.",
+    ajuda: "Localize o processo e envie ao Atendimento (ou informe que não foi localizado); nos devolvidos, registre o arquivamento. Em \"Meu histórico\", um processo não localizado ainda pode receber nova busca.",
     vazio: "Nenhuma tarefa atribuída a você."
   },
   {

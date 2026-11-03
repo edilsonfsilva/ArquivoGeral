@@ -89,6 +89,16 @@ export const ACOES = {
     exige: []
   },
   encerrar: { label: "Parte avisada — encerrar", de: ["nao_localizado"], para: "encerrado", perfis: ATEND, exige: [] },
+  // A Busca pode tentar de novo um processo não localizado (enquanto o Atendimento não encerrar).
+  // Volta para "em busca" com o mesmo responsável; chefe/servidor podem reatribuir depois.
+  nova_busca: {
+    label: "Fazer nova busca",
+    de: ["nao_localizado"],
+    para: "em_busca",
+    perfis: BUSCA,
+    exige: [],
+    responsavel: "buscaResponsavelId"
+  },
   atribuir_arquivamento: {
     label: "Atribuir responsável pelo arquivamento",
     de: ["aguardando_arquivamento", "em_arquivamento"],

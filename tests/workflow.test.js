@@ -36,6 +36,7 @@ const ESPERADAS = [
   ["registrar_devolucao", "em_consulta", "aguardando_arquivamento"],
   ["registrar_devolucao", "disponivel", "aguardando_arquivamento"],
   ["encerrar", "nao_localizado", "encerrado"],
+  ["nova_busca", "nao_localizado", "em_busca"],
   ["atribuir_arquivamento", "aguardando_arquivamento", "em_arquivamento"],
   ["atribuir_arquivamento", "em_arquivamento", "em_arquivamento"],
   ["arquivar", "em_arquivamento", "arquivado"]
@@ -53,7 +54,8 @@ const PERFIS_ESPERADOS = {
   atribuir_arquivamento: ["chefe_busca", "servidor_busca"],
   localizar: BUSCA,
   nao_localizar: BUSCA,
-  arquivar: BUSCA
+  arquivar: BUSCA,
+  nova_busca: BUSCA
 };
 
 // Dados mínimos exigidos por ação, para os testes passarem a validação.
@@ -140,6 +142,25 @@ describe("regra do responsável (operador da Busca)", () => {
     for (const role of ["servidor_busca", "chefe_busca"]) {
       assert.equal(podeExecutar(role, "localizar", pedidoEm("em_busca", { buscaResponsavelId: 99 }), 7), true);
     }
+  });
+});
+
+describe("nova busca de processo não localizado", () => {
+  test("Busca pode reabrir a busca; volta para em_busca com o mesmo responsável", () => {
+    assert.equal(ACOES.nova_busca.para, "em_busca");
+    assert.equal(podeExecutar("chefe_busca", "nova_busca", pedidoEm("nao_localizado", { buscaResponsavelId: 99 }), 1), true);
+    assert.equal(podeExecutar("servidor_busca", "nova_busca", pedidoEm("nao_localizado", { buscaResponsavelId: 99 }), 1), true);
+  });
+  test("operador só reabre a busca que era dele", () => {
+    assert.equal(podeExecutar("operador_busca", "nova_busca", pedidoEm("nao_localizado"), 7), true);
+    assert.equal(podeExecutar("operador_busca", "nova_busca", pedidoEm("nao_localizado", { buscaResponsavelId: 99 }), 7), false);
+  });
+  test("depois de encerrado pelo Atendimento não há nova busca", () => {
+    for (const r of TODOS) assert.equal(podeExecutar(r, "nova_busca", pedidoEm("encerrado"), 7), false);
+  });
+  test("Atendimento vê encerrar; Busca vê nova busca", () => {
+    assert.deepEqual(acoesDisponiveis("operador_atendimento", pedidoEm("nao_localizado"), 1), ["encerrar"]);
+    assert.deepEqual(acoesDisponiveis("servidor_busca", pedidoEm("nao_localizado"), 1), ["nova_busca"]);
   });
 });
 
